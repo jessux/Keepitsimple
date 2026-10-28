@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Base64
 import android.util.Log
 import com.google.android.gms.auth.api.identity.Identity
@@ -18,10 +19,10 @@ import java.util.Locale
 
 /**
  * Récapitulatif par e-mail (Gmail) des tâches dont l'échéance est dépassée.
- * Envoyé chaque jour vers 8h à l'adresse du compte Google connecté, seulement s'il y a des tâches en retard.
+ * Envoyé chaque jour à 6h à l'adresse du compte Google connecté, seulement s'il y a des tâches en retard.
  */
 object Recap {
-    private val HOUR = LocalTime.of(8, 0)
+    private val HOUR = LocalTime.of(6, 0)
     private val fmt = DateTimeFormatter.ofPattern("EEEE d MMMM 'à' HH'h'mm", Locale.FRENCH)
 
     fun scheduleDaily(context: Context) {
@@ -31,10 +32,14 @@ object Recap {
             context, 0, Intent(context, RecapReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        context.getSystemService(AlarmManager::class.java).setInexactRepeating(
-            AlarmManager.RTC_WAKEUP, first.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            AlarmManager.INTERVAL_DAY, pi
-        )
+        // Alarme exacte à usage unique, reprogrammée à chaque déclenchement (plus précis qu'une alarme répétée)
+        val am = context.getSystemService(AlarmManager::class.java)
+        val at = first.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()) {
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        } else {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        }
     }
 
     /** Envoie le récapitulatif (bloquant : à appeler hors thread UI). Renvoie le message à annoncer. */
@@ -65,6 +70,7 @@ object Recap {
 
 class RecapReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        Recap.scheduleDaily(context) // prochain envoi demain
         val pending = goAsync()
         Thread {
             try {

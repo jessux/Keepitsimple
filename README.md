@@ -38,6 +38,6 @@ Limite : Google Tasks ne garde que la date ; l'heure est mise dans les notes.
 
 ## Récapitulatif des tâches en retard (Gmail)
 
-Une fois Google connecté, un e-mail listant les tâches en retard est envoyé chaque jour vers 8h
+Une fois Google connecté, un e-mail listant les tâches en retard est envoyé chaque jour à 6h
 à l'adresse du compte Google (rien n'est envoyé s'il n'y a pas de retard).
 Envoi immédiat : dire « envoie le récap ».
