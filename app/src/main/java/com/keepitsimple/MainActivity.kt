@@ -23,6 +23,8 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -61,10 +63,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val googleConsent = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
-        if (res.resultCode == RESULT_OK) {
+        // Google renvoie la cause de l'échec dans l'intent, même quand le résultat n'est pas OK
+        val error = try {
+            Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(res.data)
+            null
+        } catch (e: ApiException) { e.statusCode } catch (e: Exception) { -1 }
+        if (error == null) {
             CloudSync.prefs(this).edit().putBoolean("google", true).apply()
-            say("Google Tasks connecté")
-        } else say("Connexion Google annulée")
+            say("Google connecté")
+        } else say(GoogleTasks.errorMessage(error))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -246,8 +253,8 @@ class MainActivity : AppCompatActivity() {
                     }.apply()
                     say(if (google) "Google Tasks déconnecté" else "Microsoft To Do déconnecté")
                 } else if (google) {
-                    GoogleTasks.connect(this, { googleConsent.launch(IntentSenderRequest.Builder(it).build()) }) { ok ->
-                        say(if (ok) "Google Tasks connecté" else "Échec de connexion Google")
+                    GoogleTasks.connect(this, { googleConsent.launch(IntentSenderRequest.Builder(it).build()) }) { error ->
+                        say(if (error == null) "Google connecté" else GoogleTasks.errorMessage(error))
                     }
                 } else if (!MicrosoftTodo.configured()) {
                     say("Microsoft To Do est désactivé")

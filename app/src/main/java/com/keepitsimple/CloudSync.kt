@@ -8,6 +8,8 @@ import android.util.Base64
 import android.util.Log
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Scope
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -61,13 +63,25 @@ object GoogleTasks {
         .build()
 
     /** Lance la connexion ; [onConsent] reçoit l'écran de consentement à afficher si besoin. */
-    fun connect(activity: Activity, onConsent: (android.content.IntentSender) -> Unit, onDone: (Boolean) -> Unit) {
+    /** [onDone] reçoit null si connecté, sinon le code d'erreur Google. */
+    fun connect(activity: Activity, onConsent: (android.content.IntentSender) -> Unit, onDone: (Int?) -> Unit) {
         Identity.getAuthorizationClient(activity).authorize(request)
             .addOnSuccessListener { r ->
                 if (r.hasResolution()) onConsent(r.pendingIntent!!.intentSender)
-                else { CloudSync.prefs(activity).edit().putBoolean("google", true).apply(); onDone(true) }
+                else { CloudSync.prefs(activity).edit().putBoolean("google", true).apply(); onDone(null) }
             }
-            .addOnFailureListener { onDone(false) }
+            .addOnFailureListener { e ->
+                Log.e("CloudSync", "Google connect", e)
+                onDone((e as? ApiException)?.statusCode ?: -1)
+            }
+    }
+
+    fun errorMessage(code: Int) = when (code) {
+        CommonStatusCodes.DEVELOPER_ERROR ->
+            "Échec Google, code 10 : configuration Google Cloud incorrecte. Vérifiez le nom de package et l'empreinte SHA-1."
+        CommonStatusCodes.CANCELED, 12501 -> "Connexion Google annulée, code $code"
+        CommonStatusCodes.NETWORK_ERROR -> "Échec Google : pas de réseau"
+        else -> "Échec de connexion Google, code $code"
     }
 
     fun push(activity: Activity, task: Task, onError: (String) -> Unit) {
