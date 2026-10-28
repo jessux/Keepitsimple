@@ -11,6 +11,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import java.time.format.DateTimeFormatter
@@ -26,6 +27,13 @@ class MainActivity : AppCompatActivity() {
 
     private val speech = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
         res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let(::handle)
+    }
+
+    private val googleConsent = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        if (res.resultCode == RESULT_OK) {
+            CloudSync.prefs(this).edit().putBoolean("google", true).apply()
+            say("Google Tasks connecté")
+        } else say("Connexion Google annulée")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,8 +86,25 @@ class MainActivity : AppCompatActivity() {
     private fun handle(text: String) {
         val read = Regex("^(lis|lire|liste|quelles sont)\\b.*", RegexOption.IGNORE_CASE)
         val delete = Regex("^(supprime|efface|enlève|retire|termine|j'ai fini)\\s*(la tâche\\s*)?(.*)$", RegexOption.IGNORE_CASE)
+        val connect = Regex("^(connecte|connecter|connexion|déconnecte|déconnecter)\\b.*(google|microsoft)", RegexOption.IGNORE_CASE)
         val m = delete.find(text.trim())
+        val c = connect.find(text.trim())
         when {
+            c != null -> {
+                val google = c.groupValues[2].lowercase() == "google"
+                if (c.groupValues[1].lowercase().startsWith("déconnect")) {
+                    CloudSync.prefs(this).edit().apply {
+                        if (google) remove("google") else { remove("ms_refresh"); remove("ms_list") }
+                    }.apply()
+                    say(if (google) "Google Tasks déconnecté" else "Microsoft To Do déconnecté")
+                } else if (google) {
+                    GoogleTasks.connect(this, { googleConsent.launch(IntentSenderRequest.Builder(it).build()) }) { ok ->
+                        say(if (ok) "Google Tasks connecté" else "Échec de connexion Google")
+                    }
+                } else if (!MicrosoftTodo.configured()) {
+                    say("Microsoft non configuré dans l'application")
+                } else MicrosoftTodo.connect(this)
+            }
             read.matches(text.trim()) -> say(
                 if (tasks.isEmpty()) "Aucune tâche" else tasks.joinToString(". ", "${tasks.size} tâches. ") { label(it) }
             )
@@ -97,6 +122,7 @@ class MainActivity : AppCompatActivity() {
                 val task = VoiceParser.parse(text)
                 store.add(task)
                 Reminders.schedule(this, task)
+                CloudSync.push(this, task, ::say)
                 refresh()
                 say("Ajouté : ${label(task)}")
             }
