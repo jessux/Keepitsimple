@@ -1,0 +1,12 @@
+<resources>
+    <color name="bg">#121216</color>
+    <color name="surface">#1E1E24</color>
+    <color name="text">#ECEAF0</color>
+    <color name="muted">#A09DA8</color>
+    <color name="accent">#8C9EFF</color>
+    <color name="listening">#66BB6A</color>
+    <color name="speaking">#FFA726</color>
+    <color name="paused">#757575</color>
+    <color name="late">#EF5350</color>
+    <color name="today">#FFA726</color>
+</resources>
