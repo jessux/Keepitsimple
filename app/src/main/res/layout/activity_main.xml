@@ -5,32 +5,18 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <LinearLayout
+    <Button
+        android:id="@+id/mic"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <EditText
-            android:id="@+id/input"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="ex : rappelle-moi d'appeler Paul demain à 18h"
-            android:imeOptions="actionDone"
-            android:inputType="text" />
-
-        <Button
-            android:id="@+id/mic"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🎤" />
-    </LinearLayout>
+        android:layout_height="120dp"
+        android:text="🎤  Parler"
+        android:textSize="24sp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingTop="8dp"
-        android:text="Appui long sur une tâche pour la supprimer" />
+        android:text="Dites une tâche, « lis mes tâches » ou « supprime … »" />
 
     <ListView
         android:id="@+id/list"
