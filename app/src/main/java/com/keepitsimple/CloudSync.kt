@@ -26,7 +26,7 @@ object CloudSync {
 
     fun push(activity: Activity, task: Task, onError: (String) -> Unit) {
         if (prefs(activity).getBoolean("google", false)) GoogleTasks.push(activity, task, onError)
-        if (prefs(activity).contains("ms_refresh")) MicrosoftTodo.push(activity, task, onError)
+        if (MicrosoftTodo.configured() && prefs(activity).contains("ms_refresh")) MicrosoftTodo.push(activity, task, onError)
     }
 
     internal fun http(method: String, url: String, token: String?, body: String?, form: Boolean = false): JSONObject {
@@ -95,12 +95,14 @@ object GoogleTasks {
  * client ID dans local.properties : MS_CLIENT_ID=...
  */
 object MicrosoftTodo {
+    /** Microsoft désactivé pour le moment : passer à true pour le réactiver. */
+    private const val ENABLED = false
     const val REDIRECT = "com.keepitsimple://auth"
     private const val AUTH = "https://login.microsoftonline.com/common/oauth2/v2.0"
     private const val SCOPE = "Tasks.ReadWrite offline_access"
     private const val GRAPH = "https://graph.microsoft.com/v1.0/me/todo/lists"
 
-    fun configured() = BuildConfig.MS_CLIENT_ID.isNotEmpty()
+    fun configured() = ENABLED && BuildConfig.MS_CLIENT_ID.isNotEmpty()
 
     fun connect(activity: Activity) {
         val verifier = Base64.encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) }, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)

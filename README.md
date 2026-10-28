@@ -27,7 +27,7 @@ Chaque nouvelle tâche est alors aussi envoyée vers le service connecté.
    (`./gradlew signingReport`).
 Limite : Google Tasks ne garde que la date ; l'heure est mise dans les notes.
 
-**Microsoft To Do** :
+**Microsoft To Do** (désactivé pour le moment : `ENABLED = true` dans `CloudSync.kt` pour réactiver) :
 1. portal.azure.com → App registrations → New : comptes « tout annuaire + comptes Microsoft personnels ».
 2. Authentication → Add platform « Mobile and desktop » → URI personnalisée `com.keepitsimple://auth`.
 3. API permissions → Microsoft Graph → Delegated → `Tasks.ReadWrite`.

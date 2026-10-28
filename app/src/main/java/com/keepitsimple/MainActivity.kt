@@ -102,7 +102,7 @@ class MainActivity : AppCompatActivity() {
                         say(if (ok) "Google Tasks connecté" else "Échec de connexion Google")
                     }
                 } else if (!MicrosoftTodo.configured()) {
-                    say("Microsoft non configuré dans l'application")
+                    say("Microsoft To Do est désactivé")
                 } else MicrosoftTodo.connect(this)
             }
             read.matches(text.trim()) -> say(
