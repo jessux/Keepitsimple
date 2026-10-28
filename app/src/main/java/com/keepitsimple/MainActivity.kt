@@ -98,6 +98,7 @@ class MainActivity : AppCompatActivity() {
         val needed = mutableListOf(Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= 33) needed += Manifest.permission.POST_NOTIFICATIONS
         permissions.launch(needed.toTypedArray())
+        Recap.scheduleDaily(this)
         refresh()
     }
 
@@ -223,9 +224,18 @@ class MainActivity : AppCompatActivity() {
         val connect = Regex("^(connecte|connecter|connexion|déconnecte|déconnecter)\\b.*(google|microsoft)", RegexOption.IGNORE_CASE)
         val pause = Regex("^(pause|stop|arrête d'écouter|tais-toi)\\b.*", RegexOption.IGNORE_CASE)
         val close = Regex("^(ferme|fermer|quitte|quitter)\\s*(l'application|l'appli|l'app|kis|keep it simple)?$", RegexOption.IGNORE_CASE)
+        // « envoie le récap » ; « envoie un mail à Paul demain » reste une tâche
+        val recap = Regex("^(envoie|envoyer|envoi)\\b.*(récap|récapitulatif|tâches en retard).*", RegexOption.IGNORE_CASE)
         val m = delete.find(t)
         val c = connect.find(t)
         when {
+            recap.matches(t) -> {
+                say("J'envoie le récapitulatif")
+                Thread {
+                    val msg = try { Recap.send(this) } catch (e: Exception) { "Échec d'envoi du récapitulatif" }
+                    runOnUiThread { say(msg) }
+                }.start()
+            }
             close.matches(t) -> finishAndRemoveTask()
             pause.matches(t) -> pauseListening()
             c != null -> {

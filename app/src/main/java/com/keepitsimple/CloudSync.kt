@@ -51,8 +51,13 @@ object CloudSync {
  * Note : Google Tasks ne conserve que la date d'échéance, l'heure est mise dans les notes.
  */
 object GoogleTasks {
-    private val request = AuthorizationRequest.builder()
-        .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/tasks")))
+    // tasks : Google Tasks · gmail.send + email : récapitulatif des tâches en retard (voir Recap)
+    internal val request = AuthorizationRequest.builder()
+        .setRequestedScopes(listOf(
+            Scope("https://www.googleapis.com/auth/tasks"),
+            Scope("https://www.googleapis.com/auth/gmail.send"),
+            Scope("email")
+        ))
         .build()
 
     /** Lance la connexion ; [onConsent] reçoit l'écran de consentement à afficher si besoin. */

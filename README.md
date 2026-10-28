@@ -24,7 +24,7 @@ Dire « connecte Google » / « connecte Microsoft » (ou « déconnecte … »)
 Chaque nouvelle tâche est alors aussi envoyée vers le service connecté.
 
 **Google Tasks** (Google Keep n'a pas d'API pour les comptes personnels) :
-1. console.cloud.google.com → nouveau projet → activer « Google Tasks API ».
+1. console.cloud.google.com → nouveau projet → activer « Google Tasks API » et « Gmail API ».
 2. Écran de consentement OAuth (externe, ajouter son compte en testeur).
 3. Identifiants → ID client OAuth type **Android**, package `com.keepitsimple`, SHA-1 de la clé de signature
    (`./gradlew signingReport`).
@@ -35,3 +35,9 @@ Limite : Google Tasks ne garde que la date ; l'heure est mise dans les notes.
 2. Authentication → Add platform « Mobile and desktop » → URI personnalisée `com.keepitsimple://auth`.
 3. API permissions → Microsoft Graph → Delegated → `Tasks.ReadWrite`.
 4. Copier l'Application (client) ID dans `local.properties` : `MS_CLIENT_ID=...`, puis recompiler.
+
+## Récapitulatif des tâches en retard (Gmail)
+
+Une fois Google connecté, un e-mail listant les tâches en retard est envoyé chaque jour vers 8h
+à l'adresse du compte Google (rien n'est envoyé s'il n'y a pas de retard).
+Envoi immédiat : dire « envoie le récap ».

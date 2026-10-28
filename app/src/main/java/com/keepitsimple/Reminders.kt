@@ -67,6 +67,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             TaskStore(context).all().forEach { Reminders.schedule(context, it) }
+            Recap.scheduleDaily(context)
         }
     }
 }
