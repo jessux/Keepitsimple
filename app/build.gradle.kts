@@ -20,6 +20,15 @@ android {
         buildConfigField("String", "MS_CLIENT_ID", "\"${props.getProperty("MS_CLIENT_ID", "")}\"")
     }
     buildFeatures { buildConfig = true }
+    // Clé de debug versionnée : même SHA-1 partout (local et CI), requis par l'ID client Google Android
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
