@@ -1,4 +1,4 @@
-# Keepitsimple
+# KIS — Keep It Simple
 Application pense bête 
 
 L'app écoute en continu tant qu'elle est ouverte : il suffit de parler. Ex. :
@@ -14,7 +14,7 @@ Un nombre n'est lu comme une heure qu'avec « à / vers / pour / avant » ou « 
 L'app prévient à voix haute si aucune date n'est comprise ou si l'échéance est passée.
 Sans heure : 9h. Notification à l'échéance.
 
-Commandes : « lis mes tâches » (lecture vocale), « supprime appeler Paul », « pause » (toucher le micro pour reprendre).
+Commandes : « lis mes tâches » (lecture vocale), « supprime appeler Paul », « ferme l'application », « pause » (toucher le micro pour reprendre).
 
 Build : `./gradlew assembleDebug` — tests : `./gradlew testDebugUnitTest`.
 

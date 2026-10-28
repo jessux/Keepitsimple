@@ -47,7 +47,7 @@ object Reminders {
         )
         val n = android.app.Notification.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle("Pense-bête")
+            .setContentTitle("KIS")
             .setContentText(title)
             .setContentIntent(open)
             .setAutoCancel(true)

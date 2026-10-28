@@ -30,6 +30,7 @@ import java.util.Locale
 
 /**
  * Écoute en continu tant que l'application est ouverte : pas de bouton à presser.
+ * « ferme l'application » quitte l'application.
  * On coupe le micro pendant que l'application parle, puis on relance l'écoute.
  */
 class MainActivity : AppCompatActivity() {
@@ -221,9 +222,11 @@ class MainActivity : AppCompatActivity() {
         val delete = Regex("^(supprime|efface|enlève|retire|termine|j'ai fini)\\s*(la tâche\\s*)?(.*)$", RegexOption.IGNORE_CASE)
         val connect = Regex("^(connecte|connecter|connexion|déconnecte|déconnecter)\\b.*(google|microsoft)", RegexOption.IGNORE_CASE)
         val pause = Regex("^(pause|stop|arrête d'écouter|tais-toi)\\b.*", RegexOption.IGNORE_CASE)
+        val close = Regex("^(ferme|fermer|quitte|quitter)\\s*(l'application|l'appli|l'app|kis|keep it simple)?$", RegexOption.IGNORE_CASE)
         val m = delete.find(t)
         val c = connect.find(t)
         when {
+            close.matches(t) -> finishAndRemoveTask()
             pause.matches(t) -> pauseListening()
             c != null -> {
                 val google = c.groupValues[2].lowercase() == "google"

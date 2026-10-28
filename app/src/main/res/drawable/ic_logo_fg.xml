@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo KIS : bulle de parole + coche (la voix crée la tâche) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,32 H68 A10,10 0 0 1 78,42 V58 A10,10 0 0 1 68,68 H50 L37,78 L40,68 A10,10 0 0 1 30,58 V42 A10,10 0 0 1 40,32 Z" />
+    <path
+        android:strokeColor="#3D5AFE"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M43,50 L51,57 L65,43" />
+</vector>
