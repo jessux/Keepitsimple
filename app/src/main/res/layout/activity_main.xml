@@ -1,26 +1,131 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
-
-    <Button
-        android:id="@+id/mic"
-        android:layout_width="match_parent"
-        android:layout_height="120dp"
-        android:text="🎤  Parler"
-        android:textSize="24sp" />
+    android:paddingHorizontal="20dp"
+    android:paddingTop="24dp">
 
     <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/app_name"
+        android:textColor="@color/text"
+        android:textSize="30sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/today"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/muted"
+        android:textSize="15sp" />
+
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingTop="8dp"
-        android:text="Dites une tâche, « lis mes tâches » ou « supprime … »" />
+        android:layout_marginTop="20dp"
+        app:cardBackgroundColor="@color/surface"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <FrameLayout
+                android:layout_width="72dp"
+                android:layout_height="72dp">
+
+                <View
+                    android:id="@+id/pulse"
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:alpha="0.25"
+                    android:background="@drawable/circle" />
+
+                <TextView
+                    android:id="@+id/mic"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/circle"
+                    android:gravity="center"
+                    android:text="🎤"
+                    android:textSize="22sp" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/heard"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="« Rappelle-moi d'appeler Paul demain à 18h »"
+                    android:textColor="@color/muted"
+                    android:textSize="14sp"
+                    android:textStyle="italic" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <TextView
+        android:id="@+id/count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="8dp"
+        android:textAllCaps="true"
+        android:letterSpacing="0.08"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:gravity="center"
+        android:text="Aucune tâche.\nParlez simplement, je vous écoute."
+        android:textColor="@color/muted"
+        android:textSize="16sp" />
 
     <ListView
         android:id="@+id/list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="10dp"
+        android:paddingBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingVertical="10dp"
+        android:text="« lis mes tâches » · « supprime … » · « connecte Google » · « pause »"
+        android:textColor="@color/muted"
+        android:textSize="12sp" />
 </LinearLayout>

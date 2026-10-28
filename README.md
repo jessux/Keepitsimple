@@ -1,17 +1,20 @@
 # Keepitsimple
 Application pense bête 
 
-L'app écoute dès l'ouverture (ou bouton 🎤). Tout se fait à la voix, ex. :
+L'app écoute en continu tant qu'elle est ouverte : il suffit de parler. Ex. :
 - « rappelle-moi d'appeler Paul demain à 18h »
 - « sortir le linge dans 20 minutes »
 - « rendez-vous dentiste le 15 novembre à 14 heures »
 - « sortir les poubelles ce soir »
 
-Mots-clés : aujourd'hui, demain, après-demain, lundi…dimanche, le 15/11, le 15 novembre,
-dans N minutes/heures/jours/semaines, à 18h / 18h30, midi, minuit, matin, après-midi, soir.
+Mots-clés : aujourd'hui, demain, après-demain, lundi…dimanche, semaine prochaine, week-end,
+le 15/11, le 15 novembre, dans N minutes/heures/jours/semaines/mois, dans une demi-heure,
+à 18h / 18h30, et quart, et demie, moins le quart, midi, minuit, matin, après-midi, soir.
+Un nombre n'est lu comme une heure qu'avec « à / vers / pour / avant » ou « heures ».
+L'app prévient à voix haute si aucune date n'est comprise ou si l'échéance est passée.
 Sans heure : 9h. Notification à l'échéance.
 
-Commandes : « lis mes tâches » (lecture vocale), « supprime appeler Paul ».
+Commandes : « lis mes tâches » (lecture vocale), « supprime appeler Paul », « pause » (toucher le micro pour reprendre).
 
 Build : `./gradlew assembleDebug` — tests : `./gradlew testDebugUnitTest`.
 

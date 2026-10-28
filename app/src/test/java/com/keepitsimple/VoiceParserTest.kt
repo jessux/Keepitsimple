@@ -24,4 +24,17 @@ class VoiceParserTest {
     @Test fun heureSeuleDejaPassee() = check("prendre médicament à 8h", "Prendre médicament", LocalDateTime.of(2026, 10, 29, 8, 0))
     @Test fun midi() = check("déjeuner avec Marc après-demain à midi", "Déjeuner avec Marc", LocalDateTime.of(2026, 10, 30, 12, 0))
     @Test fun sansEcheance() = check("acheter des piles", "Acheter des piles", null)
+
+    @Test fun etQuart() = check("réunion à 9 heures et quart", "Réunion", LocalDateTime.of(2026, 10, 29, 9, 15))
+    @Test fun midiEtDemi() = check("acheter du lait à midi et demi", "Acheter du lait", LocalDateTime.of(2026, 10, 28, 12, 30))
+    @Test fun moinsLeQuart() = check("appeler Paul demain à 18h moins le quart", "Appeler Paul", LocalDateTime.of(2026, 10, 29, 17, 45))
+    @Test fun demiHeure() = check("sortir le gâteau dans une demi-heure", "Sortir le gâteau", LocalDateTime.of(2026, 10, 28, 10, 30))
+    @Test fun heureEtDemie() = check("rappel dans 1 heure et demie", "Tâche", LocalDateTime.of(2026, 10, 28, 11, 30))
+    @Test fun dansMois() = check("contrôle technique dans 3 mois", "Contrôle technique", LocalDateTime.of(2027, 1, 28, 9, 0))
+    @Test fun semaineProchaine() = check("faire les courses la semaine prochaine", "Faire les courses", LocalDateTime.of(2026, 11, 2, 9, 0))
+    @Test fun weekEnd() = check("ranger le garage ce week-end", "Ranger le garage", LocalDateTime.of(2026, 10, 31, 9, 0))
+    @Test fun nombreSansHeure() = check("réviser le chapitre 12 demain", "Réviser le chapitre 12", LocalDateTime.of(2026, 10, 29, 9, 0))
+    @Test fun quantite() = check("acheter 3 kg de pommes", "Acheter 3 kg de pommes", null)
+    @Test fun ceMatinAujourdhui() = check("appeler Paul ce matin", "Appeler Paul", LocalDateTime.of(2026, 10, 28, 9, 0))
+    @Test fun dateInvalide() = check("fin du projet le 31/02", "Fin du projet le 31/02", null)
 }
