@@ -11,7 +11,13 @@ import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Scope
+import android.os.Handler
+import android.os.Looper
+import com.google.android.gms.tasks.Tasks
 import org.json.JSONObject
+import java.time.Instant
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -29,13 +35,17 @@ object CloudSync {
     fun prefs(c: Context) = c.getSharedPreferences("cloud", Context.MODE_PRIVATE)
 
     fun push(activity: Activity, task: Task, onError: (String) -> Unit) {
-        if (prefs(activity).getBoolean("google", false)) GoogleTasks.push(activity, task, onError)
+        GoogleTasks.push(activity, task, onError)
         if (MicrosoftTodo.configured() && prefs(activity).contains("ms_refresh")) MicrosoftTodo.push(activity, task, onError)
     }
 
     internal fun http(method: String, url: String, token: String?, body: String?, form: Boolean = false): JSONObject {
         val con = URL(url).openConnection() as HttpURLConnection
-        con.requestMethod = method
+        // HttpURLConnection ne connaît pas PATCH : surcharge acceptée par les API Google
+        if (method == "PATCH") {
+            con.requestMethod = "POST"
+            con.setRequestProperty("X-HTTP-Method-Override", "PATCH")
+        } else con.requestMethod = method
         token?.let { con.setRequestProperty("Authorization", "Bearer $it") }
         if (body != null) {
             con.doOutput = true
@@ -79,7 +89,9 @@ object GoogleTasks {
     }
 
     /** Cause lisible d'un échec d'envoi (API désactivée, autorisation, réseau…). */
-    private fun failure(e: Exception): String = when {
+    fun failure(e: Exception): String = when {
+        e is IllegalStateException && e.message == "Reconnectez Google" -> "Reconnectez Google"
+        e is java.util.concurrent.ExecutionException && e.cause is ApiException -> errorMessage((e.cause as ApiException).statusCode)
         e is HttpException && e.code == 403 && ("has not been used" in e.body || "disabled" in e.body || "SERVICE_DISABLED" in e.body) ->
             "Google Tasks API non activée dans Google Cloud"
         e is HttpException && e.code == 403 -> "Google Tasks refuse l'accès, reconnectez Google"
@@ -97,26 +109,118 @@ object GoogleTasks {
         else -> "Échec de connexion Google, code $code"
     }
 
-    fun push(activity: Activity, task: Task, onError: (String) -> Unit) {
-        Identity.getAuthorizationClient(activity).authorize(request)
-            .addOnSuccessListener { r ->
-                val token = r.accessToken
-                if (token == null) { onError("Reconnectez Google"); return@addOnSuccessListener }
-                Thread {
-                    try {
-                        val body = JSONObject().put("title", task.title)
-                        task.due?.let {
-                            body.put("due", it.toLocalDate().atStartOfDay().toInstant(ZoneOffset.UTC).toString())
-                            body.put("notes", "Échéance : ${it.toLocalTime()}")
-                        }
-                        CloudSync.http("POST", "https://tasks.googleapis.com/tasks/v1/lists/@default/tasks", token, body.toString())
-                    } catch (e: Exception) {
-                        Log.e("CloudSync", "Google", e)
-                        activity.runOnUiThread { onError(failure(e)) }
-                    }
-                }.start()
+    private const val API = "https://tasks.googleapis.com/tasks/v1/lists/@default/tasks"
+    private val main = Handler(Looper.getMainLooper())
+    private val noteTime = Regex("Échéance : (\\d{1,2}):(\\d{2})")
+
+    fun enabled(c: Context) = CloudSync.prefs(c).getBoolean("google", false)
+
+    /** Jeton d'accès (bloquant, hors thread UI). */
+    private fun token(c: Context): String =
+        Tasks.await(Identity.getAuthorizationClient(c).authorize(request)).accessToken
+            ?: throw IllegalStateException("Reconnectez Google")
+
+    private fun body(task: Task) = JSONObject()
+        .put("title", task.title)
+        .put("status", if (task.done) "completed" else "needsAction")
+        .put("due", task.due?.let { it.toLocalDate().atStartOfDay().toInstant(ZoneOffset.UTC).toString() } ?: JSONObject.NULL)
+        .put("notes", task.due?.let { "Échéance : " + it.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm")) } ?: "")
+
+    /** Crée (et mémorise son identifiant) ou met à jour la tâche dans Google Tasks. */
+    fun push(c: Context, task: Task, onError: (String) -> Unit = {}) = background(c, onError) { token ->
+        if (task.gid == null) {
+            val gid = CloudSync.http("POST", API, token, body(task).toString()).getString("id")
+            TaskStore(c).patch(task.id) { it.copy(gid = gid) }
+        } else CloudSync.http("PATCH", "$API/${task.gid}", token, body(task).toString())
+    }
+
+    fun delete(c: Context, gid: String?, onError: (String) -> Unit = {}) {
+        if (gid != null) background(c, onError) { token -> CloudSync.http("DELETE", "$API/$gid", token, null) }
+    }
+
+    private fun background(c: Context, onError: (String) -> Unit, block: (String) -> Unit) {
+        if (!enabled(c)) return
+        Thread {
+            try { block(token(c)) } catch (e: Exception) {
+                Log.e("CloudSync", "Google", e)
+                main.post { onError(failure(e)) }
             }
-            .addOnFailureListener { e -> onError(errorMessage((e as? ApiException)?.statusCode ?: -1)) }
+        }.start()
+    }
+
+    /**
+     * Synchronisation Google Tasks → KIS (bloquant) : applique les tâches créées, modifiées, terminées
+     * ou supprimées dans Google Tasks depuis la dernière synchronisation. Renvoie le nombre de changements.
+     */
+    @Synchronized
+    fun pull(c: Context): Int {
+        if (!enabled(c)) return 0
+        val token = token(c)
+        val prefs = CloudSync.prefs(c)
+        val since = prefs.getString("g_sync", null)
+        val start = Instant.now().minusSeconds(60) // marge pour les horloges
+        val store = TaskStore(c)
+        var changes = 0
+        var page: String? = null
+        do {
+            var url = "$API?showCompleted=true&showHidden=true&showDeleted=true&maxResults=100"
+            since?.let { url += "&updatedMin=" + URLEncoder.encode(it, "UTF-8") }
+            page?.let { url += "&pageToken=" + URLEncoder.encode(it, "UTF-8") }
+            val r = CloudSync.http("GET", url, token, null)
+            val items = r.optJSONArray("items")
+            if (items != null) for (i in 0 until items.length()) {
+                if (apply(c, store, items.getJSONObject(i), firstSync = since == null)) changes++
+            }
+            page = r.optString("nextPageToken").ifEmpty { null }
+        } while (page != null)
+        prefs.edit().putString("g_sync", start.toString()).apply()
+        return changes
+    }
+
+    private fun apply(c: Context, store: TaskStore, o: JSONObject, firstSync: Boolean): Boolean {
+        val gid = o.getString("id")
+        val title = o.optString("title").trim()
+        val deleted = o.optBoolean("deleted", false)
+        val completed = o.optString("status") == "completed"
+        val date = o.optString("due").ifEmpty { null }?.let { Instant.parse(it).atZone(ZoneOffset.UTC).toLocalDate() }
+        val time = noteTime.find(o.optString("notes"))?.let { m ->
+            runCatching { LocalTime.of(m.groupValues[1].toInt(), m.groupValues[2].toInt()) }.getOrNull()
+        }
+        val all = store.all()
+        var local = all.firstOrNull { it.gid == gid }
+        if (local == null && firstSync) {
+            // Première synchro : relie les tâches déjà envoyées avant que KIS mémorise les identifiants
+            local = all.firstOrNull { it.gid == null && it.title.equals(title, true) && it.due?.toLocalDate() == date }
+                ?.also { t -> store.patch(t.id) { it.copy(gid = gid) } }?.copy(gid = gid)
+        }
+        if (local == null) {
+            if (deleted || completed || title.isEmpty()) return false
+            val task = store.add(Task(store.newId(), title, date?.atTime(time ?: LocalTime.of(9, 0)), gid = gid))
+            Reminders.schedule(c, task)
+            return true
+        }
+        if (deleted) {
+            Reminders.cancel(c, local)
+            store.remove(local.id)
+            return true
+        }
+        val due = date?.atTime(time ?: local.due?.takeIf { it.toLocalDate() == date }?.toLocalTime() ?: LocalTime.of(9, 0))
+        val updated = local.copy(title = title.ifEmpty { local.title }, due = due)
+        return when {
+            completed && !local.done -> { store.update(updated); TaskActions.complete(c, updated); true }
+            !completed && local.done -> {
+                store.update(updated.copy(done = false, num = 0))
+                Reminders.schedule(c, store.all().first { it.id == local.id })
+                true
+            }
+            updated != local -> {
+                Reminders.cancel(c, local)
+                store.update(updated)
+                Reminders.schedule(c, updated)
+                true
+            }
+            else -> false
+        }
     }
 }
 

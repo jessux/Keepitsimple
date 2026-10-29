@@ -62,10 +62,48 @@ object VoiceParser {
         RegexOption.IGNORE_CASE
     )
 
+    // Récurrence : « tous les jours », « chaque lundi », « tous les 3 jours », « toutes les semaines »,
+    // « tous les mois le 5 », « tous les ans », « tous les matins », « quotidien », « hebdomadaire »…
+    private val recurrence = Regex(
+        "\\b(?:tous les|toutes les|chaque)\\s+(?:(\\d+)\\s+)?(jours?|semaines?|mois|ans|années?|matins?|soirs?|midis?|" +
+            "(?:${weekdays.keys.joinToString("|")})s?)\\b" +
+            "|\\b(quotidiennement|quotidien|hebdomadaire|mensuellement|mensuel|annuellement|annuel)\\b",
+        RegexOption.IGNORE_CASE
+    )
+    private val monthDay = Regex("\\ble\\s+(\\d{1,2}|1er)\\b(?!\\s*/)(?!\\s+(?:${months.joinToString("|")}))", RegexOption.IGNORE_CASE)
+
     fun parse(input: String, now: LocalDateTime = LocalDateTime.now()): Task {
         var text = input.trim()
         var date: LocalDate? = null
         var hour: LocalTime? = null
+        var repeat: String? = null
+
+        recurrence.find(text)?.let { m ->
+            val g = m.groupValues
+            val n = g[1].toIntOrNull() ?: 1
+            val unit = g[2].lowercase().ifEmpty { g[3].lowercase() }
+            repeat = when {
+                unit.startsWith("quotid") || unit.startsWith("jour") -> "D$n"
+                unit.startsWith("matin") -> { hour = LocalTime.of(9, 0); "D$n" }
+                unit.startsWith("soir") -> { hour = LocalTime.of(19, 0); "D$n" }
+                unit.startsWith("midi") -> { hour = LocalTime.NOON; "D$n" }
+                unit.startsWith("hebdo") || unit.startsWith("semaine") -> "W$n"
+                unit.startsWith("mens") || unit == "mois" -> "M$n"
+                unit.startsWith("ann") || unit == "ans" -> "Y$n"
+                else -> {
+                    date = now.toLocalDate().with(TemporalAdjusters.nextOrSame(weekdays.getValue(unit.removeSuffix("s"))))
+                    "W$n"
+                }
+            }
+            text = text.removeRange(m.range)
+            if (repeat!!.startsWith("M")) monthDay.find(text)?.let { d ->
+                val day = if (d.groupValues[1] == "1er") 1 else d.groupValues[1].toInt()
+                val first = now.toLocalDate().withDayOfMonth(1)
+                date = runCatching { first.withDayOfMonth(day) }.getOrNull()
+                    ?.let { if (it.isBefore(now.toLocalDate())) first.plusMonths(1).withDayOfMonth(minOf(day, first.plusMonths(1).lengthOfMonth())) else it }
+                if (date != null) text = text.removeRange(d.range)
+            }
+        }
 
         relative.find(text)?.let { m ->
             val g = m.groupValues
@@ -155,12 +193,17 @@ object VoiceParser {
             text = text.removeRange(m.range)
         }
 
-        val due = when {
+        var due = when {
             date != null -> LocalDateTime.of(date, hour ?: LocalTime.of(DEFAULT_HOUR, 0))
             hour != null -> LocalDateTime.of(now.toLocalDate(), hour).let { if (it.isBefore(now)) it.plusDays(1) else it }
             else -> null
         }
-        return Task(System.currentTimeMillis(), clean(text), due)
+        repeat?.let { r ->
+            // Une tâche récurrente a toujours une échéance : la prochaine occurrence à venir
+            val base = due ?: LocalDateTime.of(now.toLocalDate(), LocalTime.of(DEFAULT_HOUR, 0))
+            due = if (base.isAfter(now)) base else Repeat.nextAfter(base, r, now)
+        }
+        return Task(System.currentTimeMillis(), clean(text), due, repeat = repeat)
     }
 
     private fun withFraction(t: LocalTime, frac: String, minus: String): LocalTime = when {
