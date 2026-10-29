@@ -20,6 +20,8 @@ import java.security.SecureRandom
 import java.time.ZoneId
 import java.time.ZoneOffset
 
+class HttpException(val code: Int, val body: String) : Exception("HTTP $code : $body")
+
 /** Envoi des tâches vers Google Tasks et Microsoft To Do (si connectés). */
 object CloudSync {
     private const val TAG = "CloudSync"
@@ -42,7 +44,7 @@ object CloudSync {
         }
         val ok = con.responseCode in 200..299
         val text = (if (ok) con.inputStream else con.errorStream)?.bufferedReader()?.use { it.readText() } ?: "{}"
-        if (!ok) throw IllegalStateException("HTTP ${con.responseCode} : $text")
+        if (!ok) throw HttpException(con.responseCode, text)
         return JSONObject(text.ifBlank { "{}" })
     }
 }
@@ -76,6 +78,17 @@ object GoogleTasks {
             }
     }
 
+    /** Cause lisible d'un échec d'envoi (API désactivée, autorisation, réseau…). */
+    private fun failure(e: Exception): String = when {
+        e is HttpException && e.code == 403 && ("has not been used" in e.body || "disabled" in e.body || "SERVICE_DISABLED" in e.body) ->
+            "Google Tasks API non activée dans Google Cloud"
+        e is HttpException && e.code == 403 -> "Google Tasks refuse l'accès, reconnectez Google"
+        e is HttpException && e.code == 401 -> "Session Google expirée, reconnectez Google"
+        e is HttpException -> "Échec Google Tasks, code ${e.code}"
+        e is java.io.IOException -> "Google Tasks injoignable, vérifiez le réseau"
+        else -> "Échec d'envoi vers Google Tasks"
+    }
+
     fun errorMessage(code: Int) = when (code) {
         CommonStatusCodes.DEVELOPER_ERROR ->
             "Échec Google, code 10 : configuration Google Cloud incorrecte. Vérifiez le nom de package et l'empreinte SHA-1."
@@ -99,11 +112,11 @@ object GoogleTasks {
                         CloudSync.http("POST", "https://tasks.googleapis.com/tasks/v1/lists/@default/tasks", token, body.toString())
                     } catch (e: Exception) {
                         Log.e("CloudSync", "Google", e)
-                        activity.runOnUiThread { onError("Échec d'envoi vers Google Tasks") }
+                        activity.runOnUiThread { onError(failure(e)) }
                     }
                 }.start()
             }
-            .addOnFailureListener { onError("Échec d'envoi vers Google Tasks") }
+            .addOnFailureListener { e -> onError(errorMessage((e as? ApiException)?.statusCode ?: -1)) }
     }
 }
 
