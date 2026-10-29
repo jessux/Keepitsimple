@@ -302,11 +302,12 @@ class MainActivity : AppCompatActivity() {
                 Reminders.schedule(this, task)
                 CloudSync.push(this, task, ::say)
                 refresh()
-                say(when {
-                    task.due == null -> "Ajouté, numéro ${task.num}, sans échéance : ${task.title}. Je n'ai pas compris de date."
-                    task.due.isBefore(LocalDateTime.now()) -> "Attention, échéance déjà passée. Numéro ${task.num} : ${spokenLabel(task)}"
-                    else -> "Ajouté, numéro ${task.num} : ${spokenLabel(task)}"
-                })
+                // Pas de relecture vocale (gain de temps) : seuls les problèmes sont annoncés, brièvement
+                when {
+                    task.due == null -> say("Pas de date")
+                    task.due.isBefore(LocalDateTime.now()) -> say("Date passée")
+                    else -> { heard.text = "Ajouté n°${task.num} : ${label(task)}"; relisten(200) }
+                }
             }
         }
     }
@@ -386,6 +387,8 @@ class MainActivity : AppCompatActivity() {
             .setOnDismissListener { if (!wasPaused) resumeListening() }
             .show()
     }
+
+    private fun label(t: Task) = t.title + (t.due?.let { " — " + dueLabel(it).first } ?: "")
 
     private fun spokenLabel(t: Task) = t.title + (t.due?.let { ", " + it.format(spoken) } ?: "")
 
