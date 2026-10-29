@@ -116,17 +116,15 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <TextView
-        android:id="@+id/count"
-        android:layout_width="wrap_content"
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabs"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="8dp"
-        android:textAllCaps="true"
-        android:letterSpacing="0.08"
-        android:textColor="@color/muted"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+        android:layout_marginTop="16dp"
+        android:background="@android:color/transparent"
+        app:tabIndicatorColor="@color/accent"
+        app:tabSelectedTextColor="@color/text"
+        app:tabTextColor="@color/muted" />
 
     <TextView
         android:id="@+id/empty"
@@ -134,18 +132,16 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:gravity="center"
-        android:text="Aucune tâche.\nParlez simplement, je vous écoute."
         android:textColor="@color/muted"
         android:textSize="16sp" />
 
-    <ListView
+    <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:clipToPadding="false"
-        android:divider="@android:color/transparent"
-        android:dividerHeight="10dp"
+        android:paddingTop="8dp"
         android:paddingBottom="16dp" />
 
     <TextView
@@ -153,7 +149,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:paddingVertical="10dp"
-        android:text="« lis mes tâches » · « supprime … » · « pause » · « ferme l'application »"
+        android:text="Glisser → terminé · ← supprimer · toucher pour modifier\n« j'ai fini … » · « supprime … » · « lis mes tâches » · « pause »"
         android:textColor="@color/muted"
         android:textSize="12sp" />
 </LinearLayout>
