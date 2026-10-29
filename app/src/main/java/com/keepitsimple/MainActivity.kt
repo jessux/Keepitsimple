@@ -21,7 +21,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.CheckBox
+import android.widget.Spinner
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -132,6 +134,7 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= 33) needed += Manifest.permission.POST_NOTIFICATIONS
         permissions.launch(needed.toTypedArray())
         Recap.scheduleDaily(this)
+        PeriodicSync.schedule(this)
         refresh()
     }
 
@@ -139,6 +142,19 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         resumed = true
         if (hasMic() && !paused) listen()
+        sync(announce = false)
+    }
+
+    /** Récupère les changements faits dans Google Tasks. */
+    private fun sync(announce: Boolean) {
+        if (!GoogleTasks.enabled(this)) { if (announce) say("Google n'est pas connecté"); return }
+        Thread {
+            val msg = try {
+                val n = GoogleTasks.pull(this)
+                if (n == 0) "Déjà à jour" else "Synchronisé : $n changement${if (n > 1) "s" else ""}"
+            } catch (e: Exception) { GoogleTasks.failure(e) }
+            runOnUiThread { refresh(); if (announce) say(msg) }
+        }.start()
     }
 
     override fun onPause() {
@@ -259,11 +275,13 @@ class MainActivity : AppCompatActivity() {
         val pause = Regex("^(pause|stop|arrête d'écouter|tais-toi)\\b.*", RegexOption.IGNORE_CASE)
         val close = Regex("^(ferme|fermer|quitte|quitter)\\s*(l'application|l'appli|l'app|kis|keep it simple)?$", RegexOption.IGNORE_CASE)
         // « envoie le récap » ; « envoie un mail à Paul demain » reste une tâche
+        val syncCmd = Regex("^(synchronise|synchroniser|synchro|mets à jour)\\b.*", RegexOption.IGNORE_CASE)
         val recap = Regex("^(envoie|envoyer|envoi)\\b.*(récap|récapitulatif|tâches en retard).*", RegexOption.IGNORE_CASE)
         val m = delete.find(t)
         val f = finish.find(t)
         val c = connect.find(t)
         when {
+            syncCmd.matches(t) -> sync(announce = true)
             recap.matches(t) -> {
                 say("J'envoie le récapitulatif")
                 Thread {
@@ -323,18 +341,34 @@ class MainActivity : AppCompatActivity() {
     private fun delete(task: Task, speak: Boolean = true) {
         Reminders.cancel(this, task)
         store.remove(task.id)
+        GoogleTasks.delete(this, task.gid, ::say)
         refresh()
         if (speak) say("Supprimé : ${task.title}")
         Snackbar.make(list, "Supprimé : ${task.title}", Snackbar.LENGTH_LONG)
-            .setAction("Annuler") { store.add(task); Reminders.schedule(this, task); refresh() }
+            .setAction("Annuler") {
+                // Supprimée côté Google : on la recrée
+                val restored = store.add(task.copy(gid = null))
+                Reminders.schedule(this, restored)
+                GoogleTasks.push(this, restored, ::say)
+                refresh()
+            }
             .show()
     }
 
     private fun setDone(task: Task, done: Boolean, speak: Boolean = true) {
+        if (done && task.repeat != null && task.due != null) {
+            // Récurrente : archivée, et la même tâche passe à l'échéance suivante
+            val next = TaskActions.complete(this, task)!!
+            refresh()
+            val msg = "Terminé. Prochaine : ${dueLabel(next.due).first}"
+            if (speak) say(msg) else Snackbar.make(list, msg, Snackbar.LENGTH_LONG).show()
+            return
+        }
         // Remise à faire : nouveau numéro libre (num = 0 → attribué par le store)
         store.update(task.copy(done = done, num = if (done) task.num else 0))
         val updated = store.all().first { it.id == task.id }
         if (done) Reminders.cancel(this, task) else Reminders.schedule(this, updated)
+        GoogleTasks.push(this, updated, ::say)
         refresh()
         if (speak) say(if (done) "Terminé : ${task.title}" else "À faire : ${task.title}")
         Snackbar.make(list, (if (done) "Terminé : " else "À faire : ") + task.title, Snackbar.LENGTH_LONG)
@@ -351,6 +385,13 @@ class MainActivity : AppCompatActivity() {
         val title = v.findViewById<EditText>(R.id.editTitle).apply { setText(task.title) }
         val dateBtn = v.findViewById<MaterialButton>(R.id.editDate)
         val timeBtn = v.findViewById<MaterialButton>(R.id.editTime)
+        // Répétition : choix courants, plus la valeur actuelle si elle est personnalisée (ex. tous les 3 jours)
+        val repeatChoices = listOf(null, "D1", "W1", "M1", "Y1").let { if (task.repeat == null || task.repeat in it) it else it + task.repeat }
+        val repeatSpinner = v.findViewById<Spinner>(R.id.editRepeat).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                repeatChoices.map { it?.let(Repeat::label) ?: "Ne se répète pas" })
+            setSelection(repeatChoices.indexOf(task.repeat))
+        }
         var date: LocalDate? = task.due?.toLocalDate()
         var time: LocalTime = task.due?.toLocalTime() ?: LocalTime.of(9, 0)
         fun show() {
@@ -377,11 +418,13 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Enregistrer") { _, _ ->
                 val updated = task.copy(
                     title = title.text.toString().trim().ifEmpty { task.title },
-                    due = date?.atTime(time)
+                    due = date?.atTime(time),
+                    repeat = if (date == null) null else repeatChoices[repeatSpinner.selectedItemPosition]
                 )
                 Reminders.cancel(this, task)
                 store.update(updated)
                 Reminders.schedule(this, updated)
+                GoogleTasks.push(this, updated, ::say)
                 refresh()
             }
             .setOnDismissListener { if (!wasPaused) resumeListening() }
@@ -433,7 +476,7 @@ class MainActivity : AppCompatActivity() {
             h.check.buttonTintList = ColorStateList.valueOf(color)
             h.check.setOnCheckedChangeListener { _, checked -> setDone(task, checked, speak = false) }
             // Badge plein dessiné en code : texte blanc lisible sur tous les téléphones
-            h.due.text = label
+            h.due.text = if (task.repeat != null && !task.done) "↻ $label" else label
             h.due.background = GradientDrawable().apply {
                 cornerRadius = 12 * resources.displayMetrics.density
                 setColor(color)

@@ -41,3 +41,17 @@ Limite : Google Tasks ne garde que la date ; l'heure est mise dans les notes.
 Une fois Google connecté, un e-mail listant les tâches en retard est envoyé chaque jour à 6h
 à l'adresse du compte Google (rien n'est envoyé s'il n'y a pas de retard).
 Envoi immédiat : dire « envoie le récap ».
+
+## Tâches récurrentes
+
+« prendre mes médicaments tous les jours à 8h », « sortir les poubelles tous les lundis à 20h »,
+« arroser les plantes tous les 3 jours », « payer le loyer tous les mois le 5 »,
+« anniversaire de Léa tous les ans le 3 mars », « fermer les volets tous les soirs ».
+Une tâche récurrente terminée est archivée dans « Terminées » et repart à l'échéance suivante (même numéro).
+La répétition se modifie aussi en touchant la tâche.
+
+## Synchronisation Google Tasks dans les deux sens
+
+KIS → Google : création, modification, terminée, suppression.
+Google → KIS : à l'ouverture de l'app, toutes les heures, ou en disant « synchronise ».
+Google Tasks ne gère pas les répétitions : chaque occurrence y apparaît comme une tâche simple.

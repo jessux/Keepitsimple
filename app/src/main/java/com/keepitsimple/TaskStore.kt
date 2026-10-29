@@ -37,10 +37,15 @@ class TaskStore(context: Context) {
                 o.getLong("id"), o.getString("title"),
                 o.optString("due").takeIf { it.isNotEmpty() }?.let(LocalDateTime::parse),
                 o.optBoolean("done", false),
-                o.optInt("num", 0)
+                o.optInt("num", 0),
+                o.optString("repeat").ifEmpty { null },
+                o.optString("gid").ifEmpty { null }
             )
         }
     }
+
+    /** Identifiant unique, même pour plusieurs tâches créées dans la même milliseconde. */
+    fun newId() = maxOf(System.currentTimeMillis(), (load().maxOfOrNull { it.id } ?: 0) + 1)
 
     /** Ajoute la tâche et la renvoie avec son numéro. */
     fun add(task: Task): Task {
@@ -52,9 +57,14 @@ class TaskStore(context: Context) {
 
     fun update(task: Task) = save(load().map { if (it.id == task.id) task else it })
 
+    /** Modifie une seule tâche à partir de sa version la plus récente (sûr depuis un thread d'arrière-plan). */
+    @Synchronized
+    fun patch(id: Long, change: (Task) -> Task) = save(load().map { if (it.id == id) change(it) else it })
+
     private fun save(tasks: List<Task>) {
         val arr = JSONArray()
-        tasks.forEach { arr.put(JSONObject().put("id", it.id).put("title", it.title).put("due", it.due?.toString() ?: "").put("done", it.done).put("num", it.num)) }
+        tasks.forEach { arr.put(JSONObject().put("id", it.id).put("title", it.title).put("due", it.due?.toString() ?: "").put("done", it.done).put("num", it.num)
+            .put("repeat", it.repeat ?: "").put("gid", it.gid ?: "")) }
         prefs.edit().putString("list", arr.toString()).apply()
     }
 }

@@ -46,4 +46,19 @@ class VoiceParserTest {
         assertEquals(null, VoiceParser.taskNumber("les courses"))
         assertEquals(null, VoiceParser.taskNumber("le rapport 3"))
     }
+
+    private fun checkRepeat(input: String, title: String, due: LocalDateTime, repeat: String) {
+        val t = VoiceParser.parse(input, now)
+        assertEquals(title, t.title)
+        assertEquals(due, t.due)
+        assertEquals(repeat, t.repeat)
+    }
+
+    @Test fun tousLesJours() = checkRepeat("prendre mes médicaments tous les jours à 8h", "Prendre mes médicaments", LocalDateTime.of(2026, 10, 29, 8, 0), "D1")
+    @Test fun tousLesLundis() = checkRepeat("sortir les poubelles tous les lundis à 20h", "Sortir les poubelles", LocalDateTime.of(2026, 11, 2, 20, 0), "W1")
+    @Test fun chaqueMercredi() = checkRepeat("piscine chaque mercredi à 18h", "Piscine", LocalDateTime.of(2026, 10, 28, 18, 0), "W1")
+    @Test fun tousLes3Jours() = checkRepeat("arroser les plantes tous les 3 jours", "Arroser les plantes", LocalDateTime.of(2026, 10, 31, 9, 0), "D3")
+    @Test fun tousLesMoisLe5() = checkRepeat("payer le loyer tous les mois le 5", "Payer le loyer", LocalDateTime.of(2026, 11, 5, 9, 0), "M1")
+    @Test fun tousLesSoirs() = checkRepeat("fermer les volets tous les soirs", "Fermer les volets", LocalDateTime.of(2026, 10, 28, 19, 0), "D1")
+    @Test fun anniversaire() = checkRepeat("anniversaire de Léa tous les ans le 3 mars", "Anniversaire de Léa", LocalDateTime.of(2027, 3, 3, 9, 0), "Y1")
 }
