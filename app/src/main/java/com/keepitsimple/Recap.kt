@@ -45,7 +45,7 @@ object Recap {
     /** Envoie le récapitulatif (bloquant : à appeler hors thread UI). Renvoie le message à annoncer. */
     fun send(context: Context): String {
         if (!CloudSync.prefs(context).getBoolean("google", false)) return "Connectez d'abord Google"
-        val late = TaskStore(context).all().filter { it.due?.isBefore(LocalDateTime.now()) == true }
+        val late = TaskStore(context).all().filter { !it.done && it.due?.isBefore(LocalDateTime.now()) == true }
         if (late.isEmpty()) return "Aucune tâche en retard"
         val auth = Tasks.await(Identity.getAuthorizationClient(context).authorize(GoogleTasks.request))
         val token = auth.accessToken ?: return "Reconnectez Google pour autoriser l'envoi d'e-mails"

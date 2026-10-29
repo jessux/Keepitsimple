@@ -14,6 +14,7 @@ object Reminders {
     private const val CHANNEL = "reminders"
 
     fun schedule(context: Context, task: Task) {
+        if (task.done) return
         val due = task.due ?: return
         val at = due.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         if (at < System.currentTimeMillis()) return

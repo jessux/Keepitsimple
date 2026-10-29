@@ -13,20 +13,34 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
-import android.widget.BaseAdapter
-import android.widget.ListView
+import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.tabs.TabLayout
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -43,7 +57,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tts: TextToSpeech
     private var recognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var tasks = listOf<Task>()
+    private var tasks = listOf<Task>()      // tâches à faire
+    private var doneTasks = listOf<Task>()  // tâches terminées
+    private var showDone = false            // onglet affiché
+    private val shown get() = if (showDone) doneTasks else tasks
     private var paused = false
     private var resumed = false
 
@@ -54,8 +71,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var heard: TextView
     private lateinit var mic: TextView
     private lateinit var pulse: View
-    private lateinit var count: TextView
+    private lateinit var tabs: TabLayout
     private lateinit var empty: TextView
+    private lateinit var list: RecyclerView
     private val adapter = TaskAdapter()
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -83,14 +101,22 @@ class MainActivity : AppCompatActivity() {
         heard = findViewById(R.id.heard)
         mic = findViewById(R.id.mic)
         pulse = findViewById(R.id.pulse)
-        count = findViewById(R.id.count)
+        tabs = findViewById(R.id.tabs)
         empty = findViewById(R.id.empty)
+        list = findViewById(R.id.list)
         findViewById<TextView>(R.id.today).text =
             LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRENCH)).replaceFirstChar { it.uppercase() }
 
-        val list = findViewById<ListView>(R.id.list)
+        list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
-        list.setOnItemLongClickListener { _, _, pos, _ -> delete(tasks[pos]); true }
+        ItemTouchHelper(swipe).attachToRecyclerView(list)
+        tabs.addTab(tabs.newTab())
+        tabs.addTab(tabs.newTab())
+        tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab) { showDone = tab.position == 1; refresh() }
+            override fun onTabUnselected(tab: TabLayout.Tab) {}
+            override fun onTabReselected(tab: TabLayout.Tab) {}
+        })
         // Touche facultative : pause / reprise de l'écoute
         mic.setOnClickListener { if (paused) resumeListening() else pauseListening() }
 
@@ -227,13 +253,15 @@ class MainActivity : AppCompatActivity() {
     private fun handle(text: String) {
         val t = text.trim()
         val read = Regex("^(lis|lire|liste|quelles sont)\\b.*", RegexOption.IGNORE_CASE)
-        val delete = Regex("^(supprime|efface|enlève|retire|termine|j'ai fini)\\s*(la tâche\\s*)?(.*)$", RegexOption.IGNORE_CASE)
+        val delete = Regex("^(supprime|efface|enlève|retire)\\s*(la tâche\\s*)?(.*)$", RegexOption.IGNORE_CASE)
+        val finish = Regex("^(terminé|termine|j'ai fini|j'ai fait|fait|valide)\\b\\s*(la tâche\\s*)?(.*)$", RegexOption.IGNORE_CASE)
         val connect = Regex("^(connecte|connecter|connexion|déconnecte|déconnecter)\\b.*(google|microsoft)", RegexOption.IGNORE_CASE)
         val pause = Regex("^(pause|stop|arrête d'écouter|tais-toi)\\b.*", RegexOption.IGNORE_CASE)
         val close = Regex("^(ferme|fermer|quitte|quitter)\\s*(l'application|l'appli|l'app|kis|keep it simple)?$", RegexOption.IGNORE_CASE)
         // « envoie le récap » ; « envoie un mail à Paul demain » reste une tâche
         val recap = Regex("^(envoie|envoyer|envoi)\\b.*(récap|récapitulatif|tâches en retard).*", RegexOption.IGNORE_CASE)
         val m = delete.find(t)
+        val f = finish.find(t)
         val c = connect.find(t)
         when {
             recap.matches(t) -> {
@@ -264,10 +292,11 @@ class MainActivity : AppCompatActivity() {
                 if (tasks.isEmpty()) "Aucune tâche" else tasks.joinToString(". ", "${tasks.size} tâches. ") { spokenLabel(it) }
             )
             m != null -> {
-                val words = m.groupValues[3].lowercase()
-                val task = tasks.firstOrNull { words.isNotBlank() && (words in it.title.lowercase() || it.title.lowercase() in words) }
+                val task = find(tasks + doneTasks, m.groupValues[3])
                 if (task == null) say("Je n'ai pas trouvé cette tâche") else delete(task)
             }
+            // « termine le rapport vendredi » sans tâche correspondante = nouvelle tâche
+            f != null && find(tasks, f.groupValues[3]) != null -> setDone(find(tasks, f.groupValues[3])!!, true)
             else -> {
                 val task = VoiceParser.parse(t)
                 store.add(task)
@@ -283,51 +312,169 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun delete(task: Task) {
+    private fun find(list: List<Task>, words: String): Task? {
+        val w = words.trim().lowercase()
+        if (w.isBlank()) return null
+        return list.firstOrNull { w in it.title.lowercase() || it.title.lowercase() in w }
+    }
+
+    private fun delete(task: Task, speak: Boolean = true) {
         Reminders.cancel(this, task)
         store.remove(task.id)
         refresh()
-        say("Supprimé : ${task.title}")
+        if (speak) say("Supprimé : ${task.title}")
+        Snackbar.make(list, "Supprimé : ${task.title}", Snackbar.LENGTH_LONG)
+            .setAction("Annuler") { store.add(task); Reminders.schedule(this, task); refresh() }
+            .show()
+    }
+
+    private fun setDone(task: Task, done: Boolean, speak: Boolean = true) {
+        val updated = task.copy(done = done)
+        store.update(updated)
+        if (done) Reminders.cancel(this, task) else Reminders.schedule(this, updated)
+        refresh()
+        if (speak) say(if (done) "Terminé : ${task.title}" else "À faire : ${task.title}")
+        Snackbar.make(list, (if (done) "Terminé : " else "À faire : ") + task.title, Snackbar.LENGTH_LONG)
+            .setAction("Annuler") { setDone(updated, !done, speak = false) }
+            .show()
+    }
+
+    // ---------- Modification manuelle ----------
+
+    private fun edit(task: Task) {
+        val wasPaused = paused
+        pauseListening() // pas d'écoute pendant la saisie
+        val v = layoutInflater.inflate(R.layout.dialog_edit, null)
+        val title = v.findViewById<EditText>(R.id.editTitle).apply { setText(task.title) }
+        val dateBtn = v.findViewById<MaterialButton>(R.id.editDate)
+        val timeBtn = v.findViewById<MaterialButton>(R.id.editTime)
+        var date: LocalDate? = task.due?.toLocalDate()
+        var time: LocalTime = task.due?.toLocalTime() ?: LocalTime.of(9, 0)
+        fun show() {
+            dateBtn.text = date?.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.FRENCH)) ?: "Choisir une date"
+            timeBtn.text = time.format(DateTimeFormatter.ofPattern("HH:mm"))
+            timeBtn.isEnabled = date != null
+        }
+        show()
+        dateBtn.setOnClickListener {
+            val d = date ?: LocalDate.now()
+            DatePickerDialog(this, { _, y, m, day -> date = LocalDate.of(y, m + 1, day); show() },
+                d.year, d.monthValue - 1, d.dayOfMonth).show()
+        }
+        timeBtn.setOnClickListener {
+            TimePickerDialog(this, { _, h, min -> time = LocalTime.of(h, min); show() },
+                time.hour, time.minute, true).show()
+        }
+        v.findViewById<MaterialButton>(R.id.editNoDate).setOnClickListener { date = null; show() }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Modifier la tâche")
+            .setView(v)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Enregistrer") { _, _ ->
+                val updated = task.copy(
+                    title = title.text.toString().trim().ifEmpty { task.title },
+                    due = date?.atTime(time)
+                )
+                Reminders.cancel(this, task)
+                store.update(updated)
+                Reminders.schedule(this, updated)
+                refresh()
+            }
+            .setOnDismissListener { if (!wasPaused) resumeListening() }
+            .show()
     }
 
     private fun spokenLabel(t: Task) = t.title + (t.due?.let { ", " + it.format(spoken) } ?: "")
 
     private fun refresh() {
-        tasks = store.all()
-        count.text = when (tasks.size) { 0 -> ""; 1 -> "1 tâche"; else -> "${tasks.size} tâches" }
-        empty.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
+        val all = store.all()
+        tasks = all.filterNot { it.done }
+        doneTasks = all.filter { it.done }.reversed() // les plus récentes en premier
+        tabs.getTabAt(0)?.text = "À faire (${tasks.size})"
+        tabs.getTabAt(1)?.text = "Terminées (${doneTasks.size})"
+        empty.text = if (showDone) "Aucune tâche terminée." else "Aucune tâche.\nParlez simplement, je vous écoute."
+        empty.visibility = if (shown.isEmpty()) View.VISIBLE else View.GONE
         adapter.notifyDataSetChanged()
     }
 
     // ---------- Liste ----------
 
-    private inner class TaskAdapter : BaseAdapter() {
-        override fun getCount() = tasks.size
-        override fun getItem(position: Int) = tasks[position]
-        override fun getItemId(position: Int) = tasks[position].id
+    private class Holder(v: View) : RecyclerView.ViewHolder(v) {
+        val check: CheckBox = v.findViewById(R.id.check)
+        val title: TextView = v.findViewById(R.id.title)
+        val due: TextView = v.findViewById(R.id.due)
+    }
 
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val v = convertView ?: layoutInflater.inflate(R.layout.item_task, parent, false)
-            val task = tasks[position]
-            val (label, colorRes) = dueLabel(task.due)
+    private inner class TaskAdapter : RecyclerView.Adapter<Holder>() {
+        override fun getItemCount() = shown.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            Holder(layoutInflater.inflate(R.layout.item_task, parent, false))
+
+        override fun onBindViewHolder(h: Holder, position: Int) {
+            val task = shown[position]
+            val (label, colorRes) = if (task.done) "Fait" to R.color.listening else dueLabel(task.due)
             val color = ContextCompat.getColor(this@MainActivity, colorRes)
-            v.findViewById<TextView>(R.id.title).text = task.title
-            v.findViewById<View>(R.id.dot).backgroundTintList = ColorStateList.valueOf(color)
-            v.findViewById<TextView>(R.id.due).apply {
-                text = label
-                setTextColor(color)
-                backgroundTintList = ColorStateList.valueOf(color)
+            h.title.text = task.title
+            h.title.alpha = if (task.done) 0.5f else 1f
+            h.title.paintFlags = if (task.done) h.title.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+                else h.title.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
+            h.check.setOnCheckedChangeListener(null)
+            h.check.isChecked = task.done
+            h.check.buttonTintList = ColorStateList.valueOf(color)
+            h.check.setOnCheckedChangeListener { _, checked -> setDone(task, checked, speak = false) }
+            // Badge plein dessiné en code : texte blanc lisible sur tous les téléphones
+            h.due.text = label
+            h.due.background = GradientDrawable().apply {
+                cornerRadius = 12 * resources.displayMetrics.density
+                setColor(color)
             }
-            return v
+            h.itemView.setOnClickListener { edit(task) }
+        }
+    }
+
+    /** Glisser à droite : terminé (ou remis à faire), à gauche : supprimer. */
+    private val swipe = object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            typeface = Typeface.DEFAULT_BOLD
+        }
+
+        override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder) = false
+
+        override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
+            val task = shown[vh.bindingAdapterPosition]
+            if (direction == ItemTouchHelper.RIGHT) setDone(task, !task.done, speak = false) else delete(task, speak = false)
+        }
+
+        override fun onChildDraw(c: Canvas, rv: RecyclerView, vh: RecyclerView.ViewHolder, dX: Float, dY: Float, state: Int, active: Boolean) {
+            val v = vh.itemView
+            if (dX != 0f) {
+                val right = dX > 0
+                paint.color = ContextCompat.getColor(this@MainActivity, if (right) R.color.listening else R.color.late)
+                val bottom = v.bottom - (v.layoutParams as ViewGroup.MarginLayoutParams).bottomMargin
+                val r = 16 * resources.displayMetrics.density
+                if (right) c.drawRoundRect(v.left.toFloat(), v.top.toFloat(), v.left + dX + r, bottom.toFloat(), r, r, paint)
+                else c.drawRoundRect(v.right + dX - r, v.top.toFloat(), v.right.toFloat(), bottom.toFloat(), r, r, paint)
+                textPaint.textSize = 15 * resources.displayMetrics.scaledDensity
+                val label = if (!right) "Supprimer" else if (showDone) "À faire" else "✓ Terminé"
+                val y = (v.top + bottom) / 2f + textPaint.textSize / 3
+                val pad = 20 * resources.displayMetrics.density
+                val x = if (right) v.left + pad else v.right - pad - textPaint.measureText(label)
+                c.drawText(label, x, y, textPaint)
+            }
+            super.onChildDraw(c, rv, vh, dX, dY, state, active)
         }
     }
 
     private fun dueLabel(due: LocalDateTime?): Pair<String, Int> {
         if (due == null) return "Sans date" to R.color.muted
         val now = LocalDateTime.now()
-        val time = due.toLocalTime().toString()
+        val time = due.format(DateTimeFormatter.ofPattern("HH:mm"))
         return when {
-            due.isBefore(now) -> "En retard" to R.color.late
+            due.isBefore(now) -> "En retard · " + due.format(DateTimeFormatter.ofPattern("d MMM", Locale.FRENCH)) to R.color.late
             due.toLocalDate() == now.toLocalDate() -> "Aujourd'hui · $time" to R.color.today
             due.toLocalDate() == now.toLocalDate().plusDays(1) -> "Demain · $time" to R.color.accent
             else -> due.format(shortDate) to R.color.muted
