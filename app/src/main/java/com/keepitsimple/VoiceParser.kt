@@ -171,6 +171,22 @@ object VoiceParser {
         else -> t.minusMinutes(minus.toLong())
     }
 
+    private val numberWords = listOf(
+        "zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix",
+        "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf", "vingt"
+    )
+    private val numberRef = Regex(
+        "^(?:(?:la|le|tâche|numéro|n°|no|#)\\s*)*(\\d{1,3}|une|${numberWords.joinToString("|")})$",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** « la 3 », « numéro trois », « la tâche une » → 3, 3, 1 ; sinon null. */
+    fun taskNumber(words: String): Int? {
+        val m = numberRef.find(words.trim().lowercase()) ?: return null
+        val w = m.groupValues[1]
+        return w.toIntOrNull() ?: if (w == "une") 1 else numberWords.indexOf(w).takeIf { it > 0 }
+    }
+
     private fun buildDate(now: LocalDateTime, day: Int, month: Int, year: Int?): LocalDate? = try {
         val d = LocalDate.of(year ?: now.year, month, day)
         if (year == null && d.isBefore(now.toLocalDate())) d.plusYears(1) else d

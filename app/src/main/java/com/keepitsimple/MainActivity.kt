@@ -289,7 +289,7 @@ class MainActivity : AppCompatActivity() {
                 } else MicrosoftTodo.connect(this)
             }
             read.matches(t) -> say(
-                if (tasks.isEmpty()) "Aucune tâche" else tasks.joinToString(". ", "${tasks.size} tâches. ") { spokenLabel(it) }
+                if (tasks.isEmpty()) "Aucune tâche" else tasks.joinToString(". ", "${tasks.size} tâches. ") { "${it.num} : ${spokenLabel(it)}" }
             )
             m != null -> {
                 val task = find(tasks + doneTasks, m.groupValues[3])
@@ -298,21 +298,22 @@ class MainActivity : AppCompatActivity() {
             // « termine le rapport vendredi » sans tâche correspondante = nouvelle tâche
             f != null && find(tasks, f.groupValues[3]) != null -> setDone(find(tasks, f.groupValues[3])!!, true)
             else -> {
-                val task = VoiceParser.parse(t)
-                store.add(task)
+                val task = store.add(VoiceParser.parse(t))
                 Reminders.schedule(this, task)
                 CloudSync.push(this, task, ::say)
                 refresh()
                 say(when {
-                    task.due == null -> "Ajouté sans échéance : ${task.title}. Je n'ai pas compris de date."
-                    task.due.isBefore(LocalDateTime.now()) -> "Attention, échéance déjà passée : ${spokenLabel(task)}"
-                    else -> "Ajouté : ${spokenLabel(task)}"
+                    task.due == null -> "Ajouté, numéro ${task.num}, sans échéance : ${task.title}. Je n'ai pas compris de date."
+                    task.due.isBefore(LocalDateTime.now()) -> "Attention, échéance déjà passée. Numéro ${task.num} : ${spokenLabel(task)}"
+                    else -> "Ajouté, numéro ${task.num} : ${spokenLabel(task)}"
                 })
             }
         }
     }
 
+    /** Par numéro (« la 3 ») ou par mots du titre. */
     private fun find(list: List<Task>, words: String): Task? {
+        VoiceParser.taskNumber(words)?.let { n -> return list.firstOrNull { !it.done && it.num == n } }
         val w = words.trim().lowercase()
         if (w.isBlank()) return null
         return list.firstOrNull { w in it.title.lowercase() || it.title.lowercase() in w }
@@ -329,8 +330,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setDone(task: Task, done: Boolean, speak: Boolean = true) {
-        val updated = task.copy(done = done)
-        store.update(updated)
+        // Remise à faire : nouveau numéro libre (num = 0 → attribué par le store)
+        store.update(task.copy(done = done, num = if (done) task.num else 0))
+        val updated = store.all().first { it.id == task.id }
         if (done) Reminders.cancel(this, task) else Reminders.schedule(this, updated)
         refresh()
         if (speak) say(if (done) "Terminé : ${task.title}" else "À faire : ${task.title}")
@@ -402,6 +404,7 @@ class MainActivity : AppCompatActivity() {
 
     private class Holder(v: View) : RecyclerView.ViewHolder(v) {
         val check: CheckBox = v.findViewById(R.id.check)
+        val num: TextView = v.findViewById(R.id.num)
         val title: TextView = v.findViewById(R.id.title)
         val due: TextView = v.findViewById(R.id.due)
     }
@@ -416,6 +419,8 @@ class MainActivity : AppCompatActivity() {
             val task = shown[position]
             val (label, colorRes) = if (task.done) "Fait" to R.color.listening else dueLabel(task.due)
             val color = ContextCompat.getColor(this@MainActivity, colorRes)
+            h.num.text = task.num.toString()
+            h.num.visibility = if (task.done) View.GONE else View.VISIBLE
             h.title.text = task.title
             h.title.alpha = if (task.done) 0.5f else 1f
             h.title.paintFlags = if (task.done) h.title.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG

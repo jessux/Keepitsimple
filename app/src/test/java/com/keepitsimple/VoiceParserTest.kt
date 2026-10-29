@@ -37,4 +37,13 @@ class VoiceParserTest {
     @Test fun quantite() = check("acheter 3 kg de pommes", "Acheter 3 kg de pommes", null)
     @Test fun ceMatinAujourdhui() = check("appeler Paul ce matin", "Appeler Paul", LocalDateTime.of(2026, 10, 28, 9, 0))
     @Test fun dateInvalide() = check("fin du projet le 31/02", "Fin du projet le 31/02", null)
+
+    @Test fun numeros() {
+        assertEquals(3, VoiceParser.taskNumber("la 3"))
+        assertEquals(3, VoiceParser.taskNumber("la tâche numéro trois"))
+        assertEquals(1, VoiceParser.taskNumber("la une"))
+        assertEquals(12, VoiceParser.taskNumber("numéro 12"))
+        assertEquals(null, VoiceParser.taskNumber("les courses"))
+        assertEquals(null, VoiceParser.taskNumber("le rapport 3"))
+    }
 }
