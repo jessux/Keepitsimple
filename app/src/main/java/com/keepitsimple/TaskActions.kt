@@ -13,8 +13,9 @@ object TaskActions {
      * Termine une tâche. Si elle est récurrente, l'occurrence est archivée dans « Terminées »
      * et la tâche reste à faire avec l'échéance suivante (même numéro). Renvoie la tâche suivante éventuelle.
      */
-    fun complete(c: Context, task: Task): Task? {
+    fun complete(c: Context, shownTask: Task): Task? {
         val store = TaskStore(c)
+        val task = store.get(shownTask.id) ?: return null
         Reminders.cancel(c, task)
         val repeat = task.repeat
         val due = task.due
