@@ -35,7 +35,7 @@ object TaskActions {
     }
 }
 
-/** Synchronisation Google Tasks → KIS toutes les heures, même application fermée. */
+/** Toutes les heures, même application fermée : synchronisation Google Tasks → KIS et mise à jour de l'application. */
 object PeriodicSync {
     fun schedule(c: Context) {
         val pi = PendingIntent.getBroadcast(
@@ -52,7 +52,9 @@ class SyncReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
         Thread {
-            try { GoogleTasks.pull(context) } catch (e: Exception) { Log.e("Sync", "Échec", e) } finally { pending.finish() }
+            try { GoogleTasks.pull(context) } catch (e: Exception) { Log.e("Sync", "Échec", e) }
+            // Pas d'installation pendant que l'application est à l'écran (elle serait fermée)
+            try { if (!MainActivity.visible) Updater.check(context) } catch (e: Exception) { Log.e("Updater", "Échec", e) } finally { pending.finish() }
         }.start()
     }
 }

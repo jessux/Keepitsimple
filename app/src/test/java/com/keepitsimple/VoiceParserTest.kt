@@ -61,4 +61,11 @@ class VoiceParserTest {
     @Test fun tousLesMoisLe5() = checkRepeat("payer le loyer tous les mois le 5", "Payer le loyer", LocalDateTime.of(2026, 11, 5, 9, 0), "M1")
     @Test fun tousLesSoirs() = checkRepeat("fermer les volets tous les soirs", "Fermer les volets", LocalDateTime.of(2026, 10, 28, 19, 0), "D1")
     @Test fun anniversaire() = checkRepeat("anniversaire de Léa tous les ans le 3 mars", "Anniversaire de Léa", LocalDateTime.of(2027, 3, 3, 9, 0), "Y1")
+
+    @Test fun versions() {
+        assertEquals(true, Updater.isNewer("0.10", "0.9"))
+        assertEquals(true, Updater.isNewer("1.0", "0.9"))
+        assertEquals(false, Updater.isNewer("0.6", "0.6"))
+        assertEquals(false, Updater.isNewer("0.5", "0.6"))
+    }
 }
