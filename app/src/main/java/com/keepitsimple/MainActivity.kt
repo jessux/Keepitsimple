@@ -53,6 +53,12 @@ import java.util.Locale
  */
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        @Volatile var visible = false
+    }
+
+    private var updateReady = false
+
     private enum class State { LISTENING, SPEAKING, PAUSED }
 
     private lateinit var store: TaskStore
@@ -141,6 +147,8 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         resumed = true
+        visible = true
+        checkUpdate(force = false)
         if (hasMic() && !paused) listen()
         sync(announce = false)
     }
@@ -154,6 +162,41 @@ class MainActivity : AppCompatActivity() {
                 if (n == 0) "Déjà à jour" else "Synchronisé : $n changement${if (n > 1) "s" else ""}"
             } catch (e: Exception) { GoogleTasks.failure(e) }
             runOnUiThread { refresh(); if (announce) say(msg) }
+        }.start()
+    }
+
+    override fun onStop() {
+        visible = false
+        // Mise à jour installée quand on quitte l'application, pour ne pas la fermer en cours d'utilisation
+        if (updateReady) Thread { runCatching { Updater.check(applicationContext, force = true) } }.start()
+        super.onStop()
+    }
+
+    private fun checkUpdate(force: Boolean, announce: Boolean = false) {
+        Thread {
+            val (result, version) = try { Updater.check(this, force, install = false) } catch (e: Exception) { null to null }
+            runOnUiThread {
+                when (result) {
+                    Updater.Result.AVAILABLE -> {
+                        updateReady = true
+                        heard.text = "Version $version disponible : installée quand vous quitterez l'application"
+                        if (announce) say("Version $version disponible. Elle s'installera quand vous quitterez l'application")
+                    }
+                    Updater.Result.NEED_PERMISSION -> {
+                        updateReady = true
+                        // Demandé une seule fois par version (ou sur demande vocale)
+                        val prefs = CloudSync.prefs(this)
+                        if (announce || prefs.getString("upd_perm_asked", null) != version) {
+                            prefs.edit().putString("upd_perm_asked", version).apply()
+                            say("Version $version disponible. Autorisez KIS à installer des mises à jour")
+                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                android.net.Uri.parse("package:$packageName")))
+                        }
+                    }
+                    Updater.Result.UP_TO_DATE -> if (announce) say("KIS est à jour")
+                    else -> if (announce) say("Vérification impossible, vérifiez le réseau")
+                }
+            }
         }.start()
     }
 
@@ -275,12 +318,14 @@ class MainActivity : AppCompatActivity() {
         val pause = Regex("^(pause|stop|arrête d'écouter|tais-toi)\\b.*", RegexOption.IGNORE_CASE)
         val close = Regex("^(ferme|fermer|quitte|quitter)\\s*(l'application|l'appli|l'app|kis|keep it simple)?$", RegexOption.IGNORE_CASE)
         // « envoie le récap » ; « envoie un mail à Paul demain » reste une tâche
+        val updateCmd = Regex("^(mets à jour|mise à jour|installe la mise à jour)\\b.*(application|appli|kis)\\b.*", RegexOption.IGNORE_CASE)
         val syncCmd = Regex("^(synchronise|synchroniser|synchro|mets à jour)\\b.*", RegexOption.IGNORE_CASE)
         val recap = Regex("^(envoie|envoyer|envoi)\\b.*(récap|récapitulatif|tâches en retard).*", RegexOption.IGNORE_CASE)
         val m = delete.find(t)
         val f = finish.find(t)
         val c = connect.find(t)
         when {
+            updateCmd.matches(t) -> checkUpdate(force = true, announce = true)
             syncCmd.matches(t) -> sync(announce = true)
             recap.matches(t) -> {
                 say("J'envoie le récapitulatif")

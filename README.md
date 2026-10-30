@@ -55,3 +55,10 @@ La répétition se modifie aussi en touchant la tâche.
 KIS → Google : création, modification, terminée, suppression.
 Google → KIS : à l'ouverture de l'app, toutes les heures, ou en disant « synchronise ».
 Google Tasks ne gère pas les répétitions : chaque occurrence y apparaît comme une tâche simple.
+
+## Mise à jour automatique
+
+KIS vérifie toutes les heures la dernière release GitHub et s'installe tout seul quand l'application
+n'est pas à l'écran (ou quand on la quitte). « mets à jour l'application » force la vérification.
+Une seule fois : autoriser KIS à installer des applications inconnues (l'app ouvre le réglage).
+Android 12+ : silencieux à partir de la 2ᵉ mise à jour ; avant, une notification demande de confirmer.
