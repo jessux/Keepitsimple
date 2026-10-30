@@ -44,6 +44,9 @@ class TaskStore(context: Context) {
         }
     }
 
+    /** Version enregistrée la plus récente (la liste affichée peut ignorer l'identifiant Google reçu entre-temps). */
+    fun get(id: Long): Task? = load().firstOrNull { it.id == id }
+
     /** Identifiant unique, même pour plusieurs tâches créées dans la même milliseconde. */
     fun newId() = maxOf(System.currentTimeMillis(), (load().maxOfOrNull { it.id } ?: 0) + 1)
 

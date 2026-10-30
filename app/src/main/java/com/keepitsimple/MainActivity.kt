@@ -383,7 +383,8 @@ class MainActivity : AppCompatActivity() {
         return list.firstOrNull { w in it.title.lowercase() || it.title.lowercase() in w }
     }
 
-    private fun delete(task: Task, speak: Boolean = true) {
+    private fun delete(shownTask: Task, speak: Boolean = true) {
+        val task = store.get(shownTask.id) ?: shownTask
         Reminders.cancel(this, task)
         store.remove(task.id)
         GoogleTasks.delete(this, task.gid, ::say)
@@ -400,7 +401,9 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun setDone(task: Task, done: Boolean, speak: Boolean = true) {
+    private fun setDone(shownTask: Task, done: Boolean, speak: Boolean = true) {
+        // Relire la tâche : l'identifiant Google a pu être enregistré après l'affichage de la liste
+        val task = store.get(shownTask.id) ?: return
         if (done && task.repeat != null && task.due != null) {
             // Récurrente : archivée, et la même tâche passe à l'échéance suivante
             val next = TaskActions.complete(this, task)!!
@@ -410,7 +413,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         // Remise à faire : nouveau numéro libre (num = 0 → attribué par le store)
-        store.update(task.copy(done = done, num = if (done) task.num else 0))
+        store.patch(task.id) { it.copy(done = done, num = if (done) it.num else 0) }
         val updated = store.all().first { it.id == task.id }
         if (done) Reminders.cancel(this, task) else Reminders.schedule(this, updated)
         GoogleTasks.push(this, updated, ::say)
@@ -461,13 +464,15 @@ class MainActivity : AppCompatActivity() {
             .setView(v)
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Enregistrer") { _, _ ->
-                val updated = task.copy(
-                    title = title.text.toString().trim().ifEmpty { task.title },
-                    due = date?.atTime(time),
-                    repeat = if (date == null) null else repeatChoices[repeatSpinner.selectedItemPosition]
-                )
+                store.patch(task.id) {
+                    it.copy(
+                        title = title.text.toString().trim().ifEmpty { task.title },
+                        due = date?.atTime(time),
+                        repeat = if (date == null) null else repeatChoices[repeatSpinner.selectedItemPosition]
+                    )
+                }
+                val updated = store.get(task.id) ?: return@setPositiveButton
                 Reminders.cancel(this, task)
-                store.update(updated)
                 Reminders.schedule(this, updated)
                 GoogleTasks.push(this, updated, ::say)
                 refresh()
