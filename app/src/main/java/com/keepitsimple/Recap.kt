@@ -78,6 +78,8 @@ class RecapReceiver : BroadcastReceiver() {
                 if (msg.startsWith("Reconnectez")) Reminders.notify(context, 0, msg)
             } catch (e: Exception) {
                 Log.e("Recap", "Échec d'envoi", e)
+                // L'échec du récap du matin est signalé, avec sa cause
+                Reminders.notify(context, 0, "Récap non envoyé : " + GoogleTasks.failure(e, "Gmail"))
             } finally {
                 pending.finish()
             }

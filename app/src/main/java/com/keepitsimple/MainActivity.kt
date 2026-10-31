@@ -112,6 +112,7 @@ class MainActivity : AppCompatActivity() {
         tabs = findViewById(R.id.tabs)
         empty = findViewById(R.id.empty)
         list = findViewById(R.id.list)
+        findViewById<TextView>(R.id.version).text = "v" + BuildConfig.VERSION_NAME
         findViewById<TextView>(R.id.today).text =
             LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRENCH)).replaceFirstChar { it.uppercase() }
 
@@ -330,7 +331,7 @@ class MainActivity : AppCompatActivity() {
             recap.matches(t) -> {
                 say("J'envoie le récapitulatif")
                 Thread {
-                    val msg = try { Recap.send(this) } catch (e: Exception) { "Échec d'envoi du récapitulatif" }
+                    val msg = try { Recap.send(this) } catch (e: Exception) { "Récap non envoyé : " + GoogleTasks.failure(e, "Gmail") }
                     runOnUiThread { say(msg) }
                 }.start()
             }

@@ -89,16 +89,17 @@ object GoogleTasks {
     }
 
     /** Cause lisible d'un échec d'envoi (API désactivée, autorisation, réseau…). */
-    fun failure(e: Exception): String = when {
+    /** [service] : « Google Tasks » ou « Gmail », pour nommer l'API en cause. */
+    fun failure(e: Exception, service: String = "Google Tasks"): String = when {
         e is IllegalStateException && e.message == "Reconnectez Google" -> "Reconnectez Google"
         e is java.util.concurrent.ExecutionException && e.cause is ApiException -> errorMessage((e.cause as ApiException).statusCode)
         e is HttpException && e.code == 403 && ("has not been used" in e.body || "disabled" in e.body || "SERVICE_DISABLED" in e.body) ->
-            "Google Tasks API non activée dans Google Cloud"
-        e is HttpException && e.code == 403 -> "Google Tasks refuse l'accès, reconnectez Google"
+            "$service API non activée dans Google Cloud"
+        e is HttpException && e.code == 403 -> "$service refuse l'accès, reconnectez Google"
         e is HttpException && e.code == 401 -> "Session Google expirée, reconnectez Google"
-        e is HttpException -> "Échec Google Tasks, code ${e.code}"
-        e is java.io.IOException -> "Google Tasks injoignable, vérifiez le réseau"
-        else -> "Échec d'envoi vers Google Tasks"
+        e is HttpException -> "Échec $service, code ${e.code}"
+        e is java.io.IOException -> "$service injoignable, vérifiez le réseau"
+        else -> "Échec d'envoi vers $service"
     }
 
     fun errorMessage(code: Int) = when (code) {
