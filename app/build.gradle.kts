@@ -12,7 +12,7 @@ android {
         applicationId = "com.keepitsimple"
         minSdk = 26
         targetSdk = 35
-        versionName = "0.9"
+        versionName = "0.10"
         // versionCode déduit de versionName (0.3 -> 300) : chaque version s'installe par-dessus la précédente
         versionCode = versionName!!.split(".").map { it.toInt() }.let { it[0] * 10000 + it[1] * 100 + it.getOrElse(2) { 0 } }
         val props = Properties().apply {
@@ -41,6 +41,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     testImplementation("junit:junit:4.13.2")
 }

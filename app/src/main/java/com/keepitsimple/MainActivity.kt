@@ -102,6 +102,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!OnboardingActivity.done(this)) {
+            // Premier lancement : présentation d'abord (elle rouvre cet écran à la fin)
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
         setContentView(R.layout.activity_main)
         store = TaskStore(this)
 
@@ -210,7 +216,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        tts.shutdown()
+        if (::tts.isInitialized) tts.shutdown() // absent si on est parti directement vers la présentation
         super.onDestroy()
     }
 
@@ -316,6 +322,7 @@ class MainActivity : AppCompatActivity() {
         val delete = Regex("^(supprime|efface|enlève|retire)\\s*(la tâche\\s*)?(.*)$", RegexOption.IGNORE_CASE)
         val finish = Regex("^(terminé|termine|j'ai fini|j'ai fait|fait|valide)\\b\\s*(la tâche\\s*)?(.*)$", RegexOption.IGNORE_CASE)
         val connect = Regex("^(connecte|connecter|connexion|déconnecte|déconnecter)\\b.*(google|microsoft)", RegexOption.IGNORE_CASE)
+        val help = Regex("^(aide|tutoriel|présentation|comment ça marche)\\b.*", RegexOption.IGNORE_CASE)
         val pause = Regex("^(pause|stop|arrête d'écouter|tais-toi)\\b.*", RegexOption.IGNORE_CASE)
         val close = Regex("^(ferme|fermer|quitte|quitter)\\s*(l'application|l'appli|l'app|kis|keep it simple)?$", RegexOption.IGNORE_CASE)
         // « envoie le récap » ; « envoie un mail à Paul demain » reste une tâche
@@ -336,6 +343,7 @@ class MainActivity : AppCompatActivity() {
                 }.start()
             }
             close.matches(t) -> finishAndRemoveTask()
+            help.matches(t) -> startActivity(Intent(this, OnboardingActivity::class.java))
             pause.matches(t) -> pauseListening()
             c != null -> {
                 val google = c.groupValues[2].lowercase() == "google"

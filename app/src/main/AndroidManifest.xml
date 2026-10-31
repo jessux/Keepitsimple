@@ -25,6 +25,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".OnboardingActivity" android:exported="false" />
         <activity android:name=".MsAuthActivity" android:exported="true" android:noHistory="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
