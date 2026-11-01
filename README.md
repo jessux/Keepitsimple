@@ -18,7 +18,7 @@ Commandes : « lis mes tâches » (lecture vocale), « supprime appeler Paul »,
 
 Build : `./gradlew assembleDebug` — tests : `./gradlew testDebugUnitTest`.
 
-Stockage : base Room (SQLite) `kis.db`. Les tâches de l'ancien stockage (≤ 0.10.1) sont reprises automatiquement au premier lancement.
+Stockage : base Room (SQLite) `kis.db` (tâches et file d'envoi Google). Les données de l'ancien stockage (≤ 0.10.1) sont reprises automatiquement au premier lancement.
 
 ## Synchronisation (optionnelle)
 

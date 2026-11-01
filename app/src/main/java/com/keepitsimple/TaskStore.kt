@@ -90,9 +90,33 @@ interface TaskDao {
     @Query("DELETE FROM tasks WHERE id = :id") fun delete(id: Long)
 }
 
-@Database(entities = [TaskRow::class], version = 1, exportSchema = false)
+/**
+ * File d'envoi durable vers Google Tasks : [kind] « g_out » (tâche à envoyer, [ref] = id local)
+ * ou « g_del » (suppression, [ref] = identifiant Google). Rejouée dans l'ordre de [created].
+ */
+@Entity(tableName = "outbox", primaryKeys = ["kind", "ref"])
+data class OutboxRow(
+    val kind: String,
+    val ref: String,
+    val created: Long = System.currentTimeMillis(),
+    val attempts: Int = 0,
+    val error: String? = null
+)
+
+@Dao
+interface OutboxDao {
+    @Query("SELECT * FROM outbox WHERE kind = :kind ORDER BY created") fun list(kind: String): List<OutboxRow>
+    @Query("SELECT COUNT(*) FROM outbox WHERE kind = :kind AND ref = :ref") fun count(kind: String, ref: String): Int
+    @Insert(onConflict = OnConflictStrategy.IGNORE) fun add(row: OutboxRow)
+    @Query("DELETE FROM outbox WHERE kind = :kind AND ref = :ref") fun remove(kind: String, ref: String)
+    @Query("UPDATE outbox SET attempts = attempts + 1, error = :error WHERE kind = :kind AND ref = :ref")
+    fun failed(kind: String, ref: String, error: String?)
+}
+
+@Database(entities = [TaskRow::class, OutboxRow::class], version = 1, exportSchema = false)
 abstract class KisDb : RoomDatabase() {
     abstract fun tasks(): TaskDao
+    abstract fun outbox(): OutboxDao
 
     companion object {
         @Volatile private var instance: KisDb? = null
@@ -104,8 +128,14 @@ abstract class KisDb : RoomDatabase() {
                 .build().also { importLegacy(c, it); instance = it }
         }
 
-        /** Reprise unique des tâches de l'ancien stockage JSON (SharedPreferences « tasks », versions ≤ 0.10.1). */
+        /** Reprise unique de l'ancien stockage (SharedPreferences, versions ≤ 0.10.1) : tâches et file d'envoi Google. */
         private fun importLegacy(c: Context, db: KisDb) {
+            val cloud = c.getSharedPreferences("cloud", Context.MODE_PRIVATE)
+            listOf("g_out", "g_del").forEach { kind ->
+                val refs = cloud.getStringSet(kind, null) ?: return@forEach
+                db.runInTransaction(Runnable { refs.forEach { db.outbox().add(OutboxRow(kind, it)) } })
+                cloud.edit().remove(kind).commit()
+            }
             val prefs = c.getSharedPreferences("tasks", Context.MODE_PRIVATE)
             val json = prefs.getString("list", null) ?: return
             val arr = JSONArray(json)
