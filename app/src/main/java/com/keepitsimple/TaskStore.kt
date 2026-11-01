@@ -9,11 +9,11 @@ import java.time.LocalDateTime
 class TaskStore(context: Context) {
     private val prefs = context.getSharedPreferences("tasks", Context.MODE_PRIVATE)
 
-    fun all(): List<Task> {
+    fun all(): List<Task> = synchronized(LOCK) {
         val list = load()
         val numbered = withNumbers(list)
         if (numbered != list) save(numbered)
-        return numbered.sortedWith(compareBy(nullsLast()) { it.due })
+        numbered.sortedWith(compareBy(nullsLast()) { it.due })
     }
 
     /** Numéro court et unique pour chaque tâche à faire (le plus petit libre), pour la désigner à la voix. */
@@ -48,21 +48,23 @@ class TaskStore(context: Context) {
     fun get(id: Long): Task? = load().firstOrNull { it.id == id }
 
     /** Identifiant unique, même pour plusieurs tâches créées dans la même milliseconde. */
-    fun newId() = maxOf(System.currentTimeMillis(), (load().maxOfOrNull { it.id } ?: 0) + 1)
+    fun newId() = synchronized(LOCK) { maxOf(System.currentTimeMillis(), (load().maxOfOrNull { it.id } ?: 0) + 1) }
 
     /** Ajoute la tâche et la renvoie avec son numéro. */
-    fun add(task: Task): Task {
+    fun add(task: Task): Task = synchronized(LOCK) {
         save(load() + task.copy(num = 0))
-        return all().first { it.id == task.id }
+        all().first { it.id == task.id }
     }
 
-    fun remove(id: Long) = save(load().filterNot { it.id == id })
+    fun remove(id: Long) = synchronized(LOCK) { save(load().filterNot { it.id == id }) }
 
-    fun update(task: Task) = save(load().map { if (it.id == task.id) task else it })
+    fun update(task: Task) = synchronized(LOCK) { save(load().map { if (it.id == task.id) task else it }) }
 
     /** Modifie une seule tâche à partir de sa version la plus récente (sûr depuis un thread d'arrière-plan). */
-    @Synchronized
-    fun patch(id: Long, change: (Task) -> Task) = save(load().map { if (it.id == id) change(it) else it })
+    fun patch(id: Long, change: (Task) -> Task) = synchronized(LOCK) { save(load().map { if (it.id == id) change(it) else it }) }
+
+    // Verrou commun à toutes les instances (UI, synchronisation, récepteurs) : pas d'écriture perdue entre threads
+    private companion object { val LOCK = Any() }
 
     private fun save(tasks: List<Task>) {
         val arr = JSONArray()

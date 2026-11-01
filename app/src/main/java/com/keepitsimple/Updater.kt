@@ -11,6 +11,8 @@ import android.content.pm.PackageInstaller
 import android.os.Build
 import android.util.Log
 import java.net.URL
+import java.security.DigestInputStream
+import java.security.MessageDigest
 
 /**
  * Mise à jour automatique depuis les releases GitHub (dépôt public).
@@ -40,17 +42,26 @@ object Updater {
         if (!c.packageManager.canRequestPackageInstalls()) return Result.NEED_PERMISSION to version
         if (!install) return Result.AVAILABLE to version
         val assets = release.getJSONArray("assets")
-        val apk = (0 until assets.length()).map { assets.getJSONObject(it) }
-            .firstOrNull { it.getString("name").endsWith(".apk") }?.getString("browser_download_url")
+        val asset = (0 until assets.length()).map { assets.getJSONObject(it) }
+            .firstOrNull { it.getString("name").endsWith(".apk") }
             ?: return Result.UP_TO_DATE to version
+        val apk = asset.getString("browser_download_url")
+        // Empreinte publiée par GitHub (« sha256:… ») : l'APK téléchargé doit lui correspondre
+        val expected = asset.optString("digest").removePrefix("sha256:").lowercase().ifEmpty { null }
 
         val installer = c.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         val id = installer.createSession(params)
         installer.openSession(id).use { session ->
-            URL(apk).openStream().use { input ->
+            val sha = MessageDigest.getInstance("SHA-256")
+            DigestInputStream(URL(apk).openStream(), sha).use { input ->
                 session.openWrite("kis.apk", 0, -1).use { out -> input.copyTo(out); session.fsync(out) }
+            }
+            val actual = sha.digest().joinToString("") { "%02x".format(it) }
+            if (expected != null && actual != expected) {
+                session.abandon()
+                throw SecurityException("APK corrompu ou altéré : empreinte SHA-256 inattendue")
             }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
             val status = PendingIntent.getBroadcast(c, 2, Intent(c, UpdateReceiver::class.java), flags)

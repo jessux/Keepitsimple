@@ -128,22 +128,74 @@ object GoogleTasks {
         .put("notes", task.due?.let { "Échéance : " + it.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm")) } ?: "")
 
     /** Crée (et mémorise son identifiant) ou met à jour la tâche dans Google Tasks. */
-    fun push(c: Context, task: Task, onError: (String) -> Unit = {}) = background(c, onError) { token ->
-        if (task.gid == null) {
-            val gid = CloudSync.http("POST", API, token, body(task).toString()).getString("id")
-            TaskStore(c).patch(task.id) { it.copy(gid = gid) }
-        } else CloudSync.http("PATCH", "$API/${task.gid}", token, body(task).toString())
+    fun push(c: Context, task: Task, onError: (String) -> Unit = {}) {
+        if (!enabled(c)) return
+        queue(c, OUT, task.id.toString(), true)
+        background(c, onError) { token ->
+            // Remis en file en cas d'échec (un envoi concurrent réussi a pu l'en retirer)
+            try { send(c, token, task) } catch (e: Exception) { queue(c, OUT, task.id.toString(), true); throw e }
+        }
     }
 
     fun delete(c: Context, gid: String?, onError: (String) -> Unit = {}) {
-        if (gid != null) background(c, onError) { token -> CloudSync.http("DELETE", "$API/$gid", token, null) }
+        if (gid == null || !enabled(c)) return
+        queue(c, DEL, gid, true)
+        background(c, onError) { token -> remove(c, token, gid) }
+    }
+
+    // File d'attente durable : tâches à envoyer (id local) et suppressions (gid), rejouées à chaque synchronisation
+    private const val OUT = "g_out"
+    private const val DEL = "g_del"
+
+    @Synchronized
+    private fun queue(c: Context, key: String, value: String, add: Boolean) {
+        val prefs = CloudSync.prefs(c)
+        val set = prefs.getStringSet(key, emptySet())!!.toMutableSet()
+        if (if (add) set.add(value) else set.remove(value)) prefs.edit().putStringSet(key, set).apply()
+    }
+
+    private fun queued(c: Context, key: String) = CloudSync.prefs(c).getStringSet(key, emptySet())!!.toSet()
+
+    @Synchronized
+    private fun send(c: Context, token: String, task: Task) {
+        val latest = TaskStore(c).get(task.id) ?: task
+        if (latest.gid == null) {
+            val gid = CloudSync.http("POST", API, token, body(latest).toString()).getString("id")
+            TaskStore(c).patch(latest.id) { it.copy(gid = gid) }
+        } else CloudSync.http("PATCH", "$API/${latest.gid}", token, body(latest).toString())
+        queue(c, OUT, latest.id.toString(), false)
+    }
+
+    private fun remove(c: Context, token: String, gid: String) {
+        try { CloudSync.http("DELETE", "$API/$gid", token, null) } catch (e: HttpException) {
+            if (e.code != 404 && e.code != 410) throw e // déjà supprimée côté Google
+        }
+        queue(c, DEL, gid, false)
+    }
+
+    /** Rejoue les envois en attente (réseau absent, erreur…). Bloquant. */
+    private fun flush(c: Context, token: String) {
+        val store = TaskStore(c)
+        queued(c, DEL).forEach { gid -> dropIfRejected(c, DEL, gid) { remove(c, token, gid) } }
+        queued(c, OUT).forEach { id ->
+            val task = id.toLongOrNull()?.let(store::get)
+            if (task == null) queue(c, OUT, id, false) else dropIfRejected(c, OUT, id) { send(c, token, task) }
+        }
+    }
+
+    /** Requête refusée définitivement par Google (400, 404…) : retirée de la file pour ne pas bloquer la synchronisation. */
+    private fun dropIfRejected(c: Context, key: String, value: String, block: () -> Unit) {
+        try { block() } catch (e: HttpException) {
+            if (e.code !in 400..499 || e.code == 401 || e.code == 403 || e.code == 429) throw e
+            Log.e("CloudSync", "Envoi abandonné", e)
+            queue(c, key, value, false)
+        }
     }
 
     private fun background(c: Context, onError: (String) -> Unit, block: (String) -> Unit) {
-        if (!enabled(c)) return
         Thread {
             try { block(token(c)) } catch (e: Exception) {
-                Log.e("CloudSync", "Google", e)
+                Log.e("CloudSync", "Google (sera réessayé à la prochaine synchronisation)", e)
                 main.post { onError(failure(e)) }
             }
         }.start()
@@ -157,6 +209,8 @@ object GoogleTasks {
     fun pull(c: Context): Int {
         if (!enabled(c)) return 0
         val token = token(c)
+        // Les modifications locales en attente partent d'abord : elles priment sur Google
+        flush(c, token)
         val prefs = CloudSync.prefs(c)
         val since = prefs.getString("g_sync", null)
         val start = Instant.now().minusSeconds(60) // marge pour les horloges
@@ -189,6 +243,8 @@ object GoogleTasks {
         }
         val all = store.all()
         var local = all.firstOrNull { it.gid == gid }
+        // Modification locale pas encore envoyée : elle n'est pas écrasée par la version Google
+        if (local != null && local.id.toString() in queued(c, OUT)) return false
         if (local == null && firstSync) {
             // Première synchro : relie les tâches déjà envoyées avant que KIS mémorise les identifiants
             local = all.firstOrNull { it.gid == null && it.title.equals(title, true) && it.due?.toLocalDate() == date }
