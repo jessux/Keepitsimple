@@ -147,14 +147,15 @@ object GoogleTasks {
     private const val OUT = "g_out"
     private const val DEL = "g_del"
 
-    @Synchronized
+    // Stockée dans la base Room (table outbox) : ordre, nombre d'essais et dernière erreur conservés
     private fun queue(c: Context, key: String, value: String, add: Boolean) {
-        val prefs = CloudSync.prefs(c)
-        val set = prefs.getStringSet(key, emptySet())!!.toMutableSet()
-        if (if (add) set.add(value) else set.remove(value)) prefs.edit().putStringSet(key, set).apply()
+        val outbox = KisDb.get(c).outbox()
+        if (add) outbox.add(OutboxRow(key, value)) else outbox.remove(key, value)
     }
 
-    private fun queued(c: Context, key: String) = CloudSync.prefs(c).getStringSet(key, emptySet())!!.toSet()
+    private fun queued(c: Context, key: String) = KisDb.get(c).outbox().list(key).map { it.ref }
+
+    private fun isQueued(c: Context, key: String, value: String) = KisDb.get(c).outbox().count(key, value) > 0
 
     @Synchronized
     private fun send(c: Context, token: String, task: Task) {
@@ -183,10 +184,13 @@ object GoogleTasks {
         }
     }
 
-    /** Requête refusée définitivement par Google (400, 404…) : retirée de la file pour ne pas bloquer la synchronisation. */
+    /** Requête refusée définitivement par Google (400, 404…) : retirée de la file ; autre échec : essai et erreur notés, réessayé plus tard. */
     private fun dropIfRejected(c: Context, key: String, value: String, block: () -> Unit) {
-        try { block() } catch (e: HttpException) {
-            if (e.code !in 400..499 || e.code == 401 || e.code == 403 || e.code == 429) throw e
+        try { block() } catch (e: Exception) {
+            if (e !is HttpException || e.code !in 400..499 || e.code == 401 || e.code == 403 || e.code == 429) {
+                KisDb.get(c).outbox().failed(key, value, e.message?.take(500))
+                throw e
+            }
             Log.e("CloudSync", "Envoi abandonné", e)
             queue(c, key, value, false)
         }
@@ -244,7 +248,7 @@ object GoogleTasks {
         val all = store.all()
         var local = all.firstOrNull { it.gid == gid }
         // Modification locale pas encore envoyée : elle n'est pas écrasée par la version Google
-        if (local != null && local.id.toString() in queued(c, OUT)) return false
+        if (local != null && isQueued(c, OUT, local.id.toString())) return false
         if (local == null && firstSync) {
             // Première synchro : relie les tâches déjà envoyées avant que KIS mémorise les identifiants
             local = all.firstOrNull { it.gid == null && it.title.equals(title, true) && it.due?.toLocalDate() == date }
