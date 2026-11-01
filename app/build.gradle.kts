@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -12,7 +13,7 @@ android {
         applicationId = "com.keepitsimple"
         minSdk = 26
         targetSdk = 35
-        versionName = "0.10.1"
+        versionName = "0.11"
         // versionCode déduit de versionName (0.3 -> 300) : chaque version s'installe par-dessus la précédente
         versionCode = versionName!!.split(".").map { it.toInt() }.let { it[0] * 10000 + it[1] * 100 + it.getOrElse(2) { 0 } }
         val props = Properties().apply {
@@ -43,5 +44,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.viewpager2:viewpager2:1.1.0")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("androidx.room:room-runtime:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
     testImplementation("junit:junit:4.13.2")
 }

@@ -1,20 +1,31 @@
 package com.keepitsimple
 
 import android.content.Context
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.Update
 import org.json.JSONArray
-import org.json.JSONObject
 import java.time.LocalDateTime
+import java.util.concurrent.Callable
 
-/** Stockage simple en JSON dans les SharedPreferences. */
+/** Stockage des tâches dans une base Room (SQLite) : écritures transactionnelles, une ligne par tâche. */
 class TaskStore(context: Context) {
-    private val prefs = context.getSharedPreferences("tasks", Context.MODE_PRIVATE)
+    private val db = KisDb.get(context)
+    private val dao = db.tasks()
 
-    fun all(): List<Task> = synchronized(LOCK) {
-        val list = load()
+    fun all(): List<Task> = db.runInTransaction(Callable {
+        val list = dao.all().map { it.task() }
         val numbered = withNumbers(list)
-        if (numbered != list) save(numbered)
+        numbered.forEachIndexed { i, t -> if (t != list[i]) dao.update(TaskRow.of(t)) }
         numbered.sortedWith(compareBy(nullsLast()) { it.due })
-    }
+    })
 
     /** Numéro court et unique pour chaque tâche à faire (le plus petit libre), pour la désigner à la voix. */
     private fun withNumbers(list: List<Task>): List<Task> {
@@ -29,47 +40,89 @@ class TaskStore(context: Context) {
         return out
     }
 
-    private fun load(): List<Task> {
-        val arr = JSONArray(prefs.getString("list", "[]"))
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Task(
-                o.getLong("id"), o.getString("title"),
-                o.optString("due").takeIf { it.isNotEmpty() }?.let(LocalDateTime::parse),
-                o.optBoolean("done", false),
-                o.optInt("num", 0),
-                o.optString("repeat").ifEmpty { null },
-                o.optString("gid").ifEmpty { null }
-            )
-        }
-    }
-
     /** Version enregistrée la plus récente (la liste affichée peut ignorer l'identifiant Google reçu entre-temps). */
-    fun get(id: Long): Task? = load().firstOrNull { it.id == id }
+    fun get(id: Long): Task? = dao.get(id)?.task()
 
     /** Identifiant unique, même pour plusieurs tâches créées dans la même milliseconde. */
-    fun newId() = synchronized(LOCK) { maxOf(System.currentTimeMillis(), (load().maxOfOrNull { it.id } ?: 0) + 1) }
+    fun newId() = maxOf(System.currentTimeMillis(), (dao.maxId() ?: 0) + 1)
 
     /** Ajoute la tâche et la renvoie avec son numéro. */
-    fun add(task: Task): Task = synchronized(LOCK) {
-        save(load() + task.copy(num = 0))
+    fun add(task: Task): Task = db.runInTransaction(Callable {
+        dao.insert(TaskRow.of(task.copy(num = 0)))
         all().first { it.id == task.id }
+    })
+
+    fun remove(id: Long) = dao.delete(id)
+
+    fun update(task: Task) { dao.update(TaskRow.of(task)) }
+
+    /** Modifie une seule tâche à partir de sa version la plus récente (atomique, sûr depuis un thread d'arrière-plan). */
+    fun patch(id: Long, change: (Task) -> Task) = db.runInTransaction(Runnable {
+        dao.get(id)?.let { dao.update(TaskRow.of(change(it.task()))) }
+    })
+}
+
+@Entity(tableName = "tasks")
+data class TaskRow(
+    @PrimaryKey val id: Long,
+    val title: String,
+    val due: String?,
+    val done: Boolean,
+    val num: Int,
+    val repeat: String?,
+    val gid: String?
+) {
+    fun task() = Task(id, title, due?.let(LocalDateTime::parse), done, num, repeat, gid)
+
+    companion object {
+        fun of(t: Task) = TaskRow(t.id, t.title, t.due?.toString(), t.done, t.num, t.repeat, t.gid)
     }
+}
 
-    fun remove(id: Long) = synchronized(LOCK) { save(load().filterNot { it.id == id }) }
+@Dao
+interface TaskDao {
+    @Query("SELECT * FROM tasks ORDER BY id") fun all(): List<TaskRow>
+    @Query("SELECT * FROM tasks WHERE id = :id") fun get(id: Long): TaskRow?
+    @Query("SELECT MAX(id) FROM tasks") fun maxId(): Long?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) fun insert(row: TaskRow)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) fun insertAll(rows: List<TaskRow>)
+    @Update fun update(row: TaskRow)
+    @Query("DELETE FROM tasks WHERE id = :id") fun delete(id: Long)
+}
 
-    fun update(task: Task) = synchronized(LOCK) { save(load().map { if (it.id == task.id) task else it }) }
+@Database(entities = [TaskRow::class], version = 1, exportSchema = false)
+abstract class KisDb : RoomDatabase() {
+    abstract fun tasks(): TaskDao
 
-    /** Modifie une seule tâche à partir de sa version la plus récente (sûr depuis un thread d'arrière-plan). */
-    fun patch(id: Long, change: (Task) -> Task) = synchronized(LOCK) { save(load().map { if (it.id == id) change(it) else it }) }
+    companion object {
+        @Volatile private var instance: KisDb? = null
 
-    // Verrou commun à toutes les instances (UI, synchronisation, récepteurs) : pas d'écriture perdue entre threads
-    private companion object { val LOCK = Any() }
+        fun get(c: Context): KisDb = instance ?: synchronized(this) {
+            instance ?: Room.databaseBuilder(c.applicationContext, KisDb::class.java, "kis.db")
+                // Requêtes courtes sur quelques dizaines de lignes : appelées directement depuis l'interface
+                .allowMainThreadQueries()
+                .build().also { importLegacy(c, it); instance = it }
+        }
 
-    private fun save(tasks: List<Task>) {
-        val arr = JSONArray()
-        tasks.forEach { arr.put(JSONObject().put("id", it.id).put("title", it.title).put("due", it.due?.toString() ?: "").put("done", it.done).put("num", it.num)
-            .put("repeat", it.repeat ?: "").put("gid", it.gid ?: "")) }
-        prefs.edit().putString("list", arr.toString()).apply()
+        /** Reprise unique des tâches de l'ancien stockage JSON (SharedPreferences « tasks », versions ≤ 0.10.1). */
+        private fun importLegacy(c: Context, db: KisDb) {
+            val prefs = c.getSharedPreferences("tasks", Context.MODE_PRIVATE)
+            val json = prefs.getString("list", null) ?: return
+            val arr = JSONArray(json)
+            val rows = (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                TaskRow(
+                    o.getLong("id"), o.getString("title"),
+                    o.optString("due").ifEmpty { null },
+                    o.optBoolean("done", false),
+                    o.optInt("num", 0),
+                    o.optString("repeat").ifEmpty { null },
+                    o.optString("gid").ifEmpty { null }
+                )
+            }
+            db.runInTransaction(Runnable { db.tasks().insertAll(rows) })
+            // Ancienne liste conservée sous un autre nom (secours), et plus jamais réimportée
+            prefs.edit().putString("list_legacy", json).remove("list").commit()
+        }
     }
 }
