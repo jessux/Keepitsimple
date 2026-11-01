@@ -55,6 +55,8 @@ La répétition se modifie aussi en touchant la tâche.
 KIS → Google : création, modification, terminée, suppression.
 Google → KIS : à l'ouverture de l'app, toutes les heures, ou en disant « synchronise ».
 Google Tasks ne gère pas les répétitions : chaque occurrence y apparaît comme une tâche simple.
+Sans réseau, les envois vers Google sont mis en attente et rejoués à la synchronisation suivante ;
+une modification locale en attente n'est pas écrasée par Google.
 
 ## Mise à jour automatique
 

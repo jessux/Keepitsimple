@@ -64,6 +64,7 @@ class VoiceParserTest {
 
     @Test fun versions() {
         assertEquals(true, Updater.isNewer("0.10", "0.9"))
+        assertEquals(true, Updater.isNewer("0.10.1", "0.10"))
         assertEquals(true, Updater.isNewer("1.0", "0.9"))
         assertEquals(false, Updater.isNewer("0.6", "0.6"))
         assertEquals(false, Updater.isNewer("0.5", "0.6"))
