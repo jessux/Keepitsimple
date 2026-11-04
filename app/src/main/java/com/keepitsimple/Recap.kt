@@ -11,6 +11,7 @@ import android.util.Log
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.tasks.Tasks
 import org.json.JSONObject
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
@@ -51,17 +52,78 @@ object Recap {
         val token = auth.accessToken ?: return "Reconnectez Google pour autoriser l'envoi d'e-mails"
         val email = CloudSync.http("GET", "https://www.googleapis.com/oauth2/v3/userinfo", token, null).getString("email")
 
-        val body = buildString {
-            append("${late.size} tâche(s) en retard :\n\n")
-            late.forEach { append("• ${it.title} — prévue ${it.due!!.format(fmt)}\n") }
-            append("\n— KIS · Keep It Simple")
+        val now = LocalDateTime.now()
+        late.sortedBy { it.due }.let { sorted ->
+            val text = buildString {
+                append("${late.size} tâche(s) en retard :\n\n")
+                sorted.forEach { append("• ${it.title} — prévue ${it.due!!.format(fmt)}\n") }
+                append("\n— KIS · Keep It Simple")
+            }
+            val subject = "=?UTF-8?B?" + b64("KIS : ${late.size} tâche(s) en retard".toByteArray(), false) + "?="
+            val boundary = "kis-" + System.currentTimeMillis()
+            val mime = "To: $email\r\nSubject: $subject\r\nMIME-Version: 1.0\r\n" +
+                "Content-Type: multipart/alternative; boundary=\"$boundary\"\r\n\r\n" +
+                part(boundary, "text/plain", text) + part(boundary, "text/html", html(sorted, now)) + "--$boundary--"
+            CloudSync.http("POST", "https://gmail.googleapis.com/gmail/v1/users/me/messages/send", token,
+                JSONObject().put("raw", b64(mime.toByteArray(), true)).toString())
         }
-        val subject = "=?UTF-8?B?" + b64("KIS : ${late.size} tâche(s) en retard".toByteArray(), false) + "?="
-        val mime = "To: $email\r\nSubject: $subject\r\nContent-Type: text/plain; charset=UTF-8\r\n" +
-            "Content-Transfer-Encoding: base64\r\n\r\n" + b64(body.toByteArray(), false)
-        CloudSync.http("POST", "https://gmail.googleapis.com/gmail/v1/users/me/messages/send", token,
-            JSONObject().put("raw", b64(mime.toByteArray(), true)).toString())
         return "Récapitulatif envoyé à $email"
+    }
+
+    private fun part(boundary: String, type: String, content: String) =
+        "--$boundary\r\nContent-Type: $type; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" +
+            Base64.encodeToString(content.toByteArray(), Base64.DEFAULT) + "\r\n"
+
+    private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    /** Retard lisible + couleur (orange < 1 j, rouge < 7 j, rouge foncé au-delà). */
+    private fun lateness(due: LocalDateTime, now: LocalDateTime): Pair<String, String> {
+        val mins = Duration.between(due, now).toMinutes()
+        val days = mins / 1440
+        val label = when {
+            days >= 1 -> "$days j"
+            mins >= 60 -> "${mins / 60} h"
+            else -> "$mins min"
+        }
+        val color = when { days >= 7 -> "#B71C1C"; days >= 1 -> "#E53935"; else -> "#FB8C00" }
+        return label to color
+    }
+
+    private fun html(tasks: List<Task>, now: LocalDateTime): String {
+        val rows = tasks.mapIndexed { i, t ->
+            val (label, color) = lateness(t.due!!, now)
+            val bg = if (i % 2 == 0) "#FFFFFF" else "#F7F8FC"
+            val repeat = t.repeat?.let { "<div style=\"font-size:12px;color:#7A7F99;margin-top:2px\">&#8635; ${Repeat.label(it)}</div>" } ?: ""
+            """<tr style="background:$bg">
+<td style="padding:12px 14px;border-bottom:1px solid #ECEEF5;font-size:15px;color:#1C1F2E"><b>${esc(t.title)}</b>$repeat</td>
+<td style="padding:12px 14px;border-bottom:1px solid #ECEEF5;font-size:13px;color:#555A70;white-space:nowrap">${t.due.format(fmt)}</td>
+<td style="padding:12px 14px;border-bottom:1px solid #ECEEF5;text-align:right"><span style="display:inline-block;background:$color;color:#fff;font-size:12px;font-weight:bold;padding:4px 10px;border-radius:12px;white-space:nowrap">+$label</span></td>
+</tr>"""
+        }.joinToString("\n")
+        val oldest = lateness(tasks.first().due!!, now).first
+        val today = now.format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", Locale.FRENCH))
+        return """<!doctype html><html><body style="margin:0;padding:0;background:#EEF0F7;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF0F7;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:14px;overflow:hidden">
+<tr><td style="background:#3D5AFE;padding:24px 24px 20px;color:#FFFFFF">
+<div style="font-size:13px;opacity:.85;text-transform:uppercase;letter-spacing:1px">KIS · Récap du matin</div>
+<div style="font-size:24px;font-weight:bold;margin-top:6px">${tasks.size} tâche${if (tasks.size > 1) "s" else ""} en retard</div>
+<div style="font-size:14px;opacity:.85;margin-top:4px">$today</div>
+</td></tr>
+<tr><td style="padding:18px 24px 6px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td width="50%" style="padding-right:6px"><div style="background:#FDECEA;border-radius:10px;padding:12px 14px"><div style="font-size:12px;color:#B71C1C">En retard</div><div style="font-size:22px;font-weight:bold;color:#B71C1C">${tasks.size}</div></div></td>
+<td width="50%" style="padding-left:6px"><div style="background:#FFF4E5;border-radius:10px;padding:12px 14px"><div style="font-size:12px;color:#E65100">Plus ancien retard</div><div style="font-size:22px;font-weight:bold;color:#E65100">$oldest</div></div></td>
+</tr></table>
+</td></tr>
+<tr><td style="padding:12px 24px 8px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ECEEF5;border-radius:10px;border-collapse:separate;overflow:hidden">
+<tr style="background:#F0F2FF"><th align="left" style="padding:10px 14px;font-size:12px;color:#3D5AFE;text-transform:uppercase">Tâche</th><th align="left" style="padding:10px 14px;font-size:12px;color:#3D5AFE;text-transform:uppercase">Échéance</th><th align="right" style="padding:10px 14px;font-size:12px;color:#3D5AFE;text-transform:uppercase">Retard</th></tr>
+$rows
+</table>
+</td></tr>
+<tr><td style="padding:16px 24px 24px;font-size:12px;color:#9A9EB5;text-align:center">KIS · Keep It Simple — ouvrez l'app pour cocher ou reporter vos tâches.</td></tr>
+</table></td></tr></table></body></html>"""
     }
 
     private fun b64(bytes: ByteArray, urlSafe: Boolean) =
