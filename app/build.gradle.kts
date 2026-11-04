@@ -13,7 +13,7 @@ android {
         applicationId = "com.keepitsimple"
         minSdk = 26
         targetSdk = 35
-        versionName = "0.11"
+        versionName = "0.12"
         // versionCode déduit de versionName (0.3 -> 300) : chaque version s'installe par-dessus la précédente
         versionCode = versionName!!.split(".").map { it.toInt() }.let { it[0] * 10000 + it[1] * 100 + it.getOrElse(2) { 0 } }
         val props = Properties().apply {
