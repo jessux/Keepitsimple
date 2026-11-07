@@ -20,14 +20,21 @@ import java.util.Locale
 
 /**
  * Récapitulatif par e-mail (Gmail) des tâches dont l'échéance est dépassée.
- * Envoyé chaque jour à 6h à l'adresse du compte Google connecté, seulement s'il y a des tâches en retard.
+ * Envoyé chaque jour à l'heure choisie (6h par défaut) à l'adresse du compte Google connecté, seulement s'il y a des tâches en retard.
  */
 object Recap {
-    private val HOUR = LocalTime.of(6, 0)
+    /** Heure d'envoi choisie (6h par défaut). */
+    fun time(context: Context): LocalTime =
+        LocalTime.ofSecondOfDay(CloudSync.prefs(context).getInt("recap_min", 6 * 60) * 60L)
+
+    fun setTime(context: Context, t: LocalTime) {
+        CloudSync.prefs(context).edit().putInt("recap_min", t.hour * 60 + t.minute).apply()
+        scheduleDaily(context)
+    }
     private val fmt = DateTimeFormatter.ofPattern("EEEE d MMMM 'à' HH'h'mm", Locale.FRENCH)
 
     fun scheduleDaily(context: Context) {
-        var first = LocalDateTime.now().with(HOUR)
+        var first = LocalDateTime.now().with(time(context)).withSecond(0).withNano(0)
         if (first.isBefore(LocalDateTime.now())) first = first.plusDays(1)
         val pi = PendingIntent.getBroadcast(
             context, 0, Intent(context, RecapReceiver::class.java),
@@ -144,7 +151,7 @@ class RecapReceiver : BroadcastReceiver() {
                 if (isNetwork(e) && attempt < MAX_RETRIES) {
                     retry(context, attempt + 1) // réseau absent (téléphone en veille…) : nouvel essai plus tard
                 } else {
-                    // L'échec du récap du matin est signalé, avec sa cause
+                    // L'échec du récap est signalé, avec sa cause
                     Reminders.notify(context, 0, "Récap non envoyé : " + GoogleTasks.failure(e, "Gmail"))
                 }
             } finally {
