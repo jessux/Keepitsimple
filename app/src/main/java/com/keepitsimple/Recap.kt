@@ -20,14 +20,21 @@ import java.util.Locale
 
 /**
  * Récapitulatif par e-mail (Gmail) des tâches dont l'échéance est dépassée.
- * Envoyé chaque jour à 6h à l'adresse du compte Google connecté, seulement s'il y a des tâches en retard.
+ * Envoyé chaque jour à l'heure choisie (6h par défaut) à l'adresse du compte Google connecté, seulement s'il y a des tâches en retard.
  */
 object Recap {
-    private val HOUR = LocalTime.of(6, 0)
+    /** Heure d'envoi choisie (6h par défaut). */
+    fun time(context: Context): LocalTime =
+        LocalTime.ofSecondOfDay(CloudSync.prefs(context).getInt("recap_min", 6 * 60) * 60L)
+
+    fun setTime(context: Context, t: LocalTime) {
+        CloudSync.prefs(context).edit().putInt("recap_min", t.hour * 60 + t.minute).apply()
+        scheduleDaily(context)
+    }
     private val fmt = DateTimeFormatter.ofPattern("EEEE d MMMM 'à' HH'h'mm", Locale.FRENCH)
 
     fun scheduleDaily(context: Context) {
-        var first = LocalDateTime.now().with(HOUR)
+        var first = LocalDateTime.now().with(time(context)).withSecond(0).withNano(0)
         if (first.isBefore(LocalDateTime.now())) first = first.plusDays(1)
         val pi = PendingIntent.getBroadcast(
             context, 0, Intent(context, RecapReceiver::class.java),
@@ -132,19 +139,50 @@ $rows
 
 class RecapReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        Recap.scheduleDaily(context) // prochain envoi demain
+        val attempt = intent.getIntExtra(EXTRA_ATTEMPT, 0)
+        if (attempt == 0) Recap.scheduleDaily(context) // prochain envoi demain
         val pending = goAsync()
         Thread {
             try {
                 val msg = Recap.send(context)
                 if (msg.startsWith("Reconnectez")) Reminders.notify(context, 0, msg)
             } catch (e: Exception) {
-                Log.e("Recap", "Échec d'envoi", e)
-                // L'échec du récap du matin est signalé, avec sa cause
-                Reminders.notify(context, 0, "Récap non envoyé : " + GoogleTasks.failure(e, "Gmail"))
+                Log.e("Recap", "Échec d'envoi (tentative ${attempt + 1})", e)
+                if (isNetwork(e) && attempt < MAX_RETRIES) {
+                    retry(context, attempt + 1) // réseau absent (téléphone en veille…) : nouvel essai plus tard
+                } else {
+                    // L'échec du récap est signalé, avec sa cause
+                    Reminders.notify(context, 0, "Récap non envoyé : " + GoogleTasks.failure(e, "Gmail"))
+                }
             } finally {
                 pending.finish()
             }
         }.start()
+    }
+
+    private fun isNetwork(e: Throwable): Boolean {
+        var c: Throwable? = e
+        while (c != null) {
+            if (c is java.io.IOException) return true
+            if (c is com.google.android.gms.common.api.ApiException &&
+                c.statusCode == com.google.android.gms.common.api.CommonStatusCodes.NETWORK_ERROR) return true
+            c = c.cause
+        }
+        return false
+    }
+
+    /** Nouvel essai dans 15 min (alarme distincte de l'envoi quotidien). */
+    private fun retry(context: Context, attempt: Int) {
+        val pi = PendingIntent.getBroadcast(
+            context, 1, Intent(context, RecapReceiver::class.java).putExtra(EXTRA_ATTEMPT, attempt),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val at = System.currentTimeMillis() + 15 * 60_000L
+        context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+    }
+
+    companion object {
+        private const val EXTRA_ATTEMPT = "attempt"
+        private const val MAX_RETRIES = 8 // jusqu'à 2 h de nouveaux essais
     }
 }

@@ -179,6 +179,11 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
     }
 
+    private fun setRecapTime(t: LocalTime) {
+        Recap.setTime(this, t)
+        say("Récapitulatif envoyé chaque jour à " + t.format(DateTimeFormatter.ofPattern("H'h'mm")))
+    }
+
     private fun checkUpdate(force: Boolean, announce: Boolean = false) {
         Thread {
             val (result, version) = try { Updater.check(this, force, install = false) } catch (e: Exception) { null to null }
@@ -329,12 +334,23 @@ class MainActivity : AppCompatActivity() {
         val updateCmd = Regex("^(mets à jour|mise à jour|installe la mise à jour)\\b.*(application|appli|kis)\\b.*", RegexOption.IGNORE_CASE)
         val syncCmd = Regex("^(synchronise|synchroniser|synchro|mets à jour)\\b.*", RegexOption.IGNORE_CASE)
         val recap = Regex("^(envoie|envoyer|envoi)\\b.*(récap|récapitulatif|tâches en retard).*", RegexOption.IGNORE_CASE)
+        // « récap à 7h30 » ; « heure du récap » ouvre le sélecteur d'heure
+        val recapTime = Regex("^(heure du |change l'heure du )?(récap|récapitulatif)\\b(.*)$", RegexOption.IGNORE_CASE)
         val m = delete.find(t)
         val f = finish.find(t)
         val c = connect.find(t)
         when {
             updateCmd.matches(t) -> checkUpdate(force = true, announce = true)
             syncCmd.matches(t) -> sync(announce = true)
+            recapTime.matches(t) -> {
+                val hm = Regex("(\\d{1,2})\\s*(?:h|heures?|:)\\s*(\\d{2})?").find(t)
+                val h = hm?.groupValues?.get(1)?.toInt()
+                val min = hm?.groupValues?.get(2)?.toIntOrNull() ?: 0
+                if (h != null && h < 24 && min < 60) setRecapTime(LocalTime.of(h, min))
+                else Recap.time(this).let { cur ->
+                    TimePickerDialog(this, { _, hh, mm -> setRecapTime(LocalTime.of(hh, mm)) }, cur.hour, cur.minute, true).show()
+                }
+            }
             recap.matches(t) -> {
                 say("J'envoie le récapitulatif")
                 Thread {

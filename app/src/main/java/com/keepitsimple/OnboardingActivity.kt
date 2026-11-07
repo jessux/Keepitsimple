@@ -33,7 +33,7 @@ class OnboardingActivity : AppCompatActivity() {
         Page("✅", "Gérez vos tâches",
             "Chaque tâche a un numéro.\n\n« J'ai fini la 3 » · « Supprime la 2 » · « Lis mes tâches »\n\nOu du doigt : glisser → terminé, ← supprimer, toucher pour modifier."),
         Page("🔔", "Rappels et synchronisation",
-            "Une notification arrive à l'échéance.\n\nDites « connecte Google » pour retrouver vos tâches dans Google Tasks et recevoir chaque matin un e-mail des tâches en retard."),
+            "Une notification arrive à l'échéance.\n\nDites « connecte Google » pour retrouver vos tâches dans Google Tasks et recevoir chaque matin un e-mail des tâches en retard (dites « récap à 7h30 » pour changer l'heure)."),
         Page("🔒", "Deux autorisations",
             "Le micro, pour vous écouter : uniquement quand KIS est ouvert.\n\nLes notifications, pour vos rappels.\n\nDites « pause » pour couper l'écoute, « ferme l'application » pour quitter, « aide » pour revoir cette présentation.")
     )
