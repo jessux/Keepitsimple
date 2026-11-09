@@ -542,7 +542,7 @@ class MainActivity : AppCompatActivity() {
             val color = ContextCompat.getColor(this@MainActivity, colorRes)
             h.num.text = task.num.toString()
             h.num.visibility = if (task.done) View.GONE else View.VISIBLE
-            h.title.text = task.title
+            h.title.text = if (task.alarm) "⏰ " + task.title else task.title
             h.title.alpha = if (task.done) 0.5f else 1f
             h.title.paintFlags = if (task.done) h.title.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 else h.title.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()

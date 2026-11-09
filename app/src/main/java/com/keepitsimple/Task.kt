@@ -6,6 +6,7 @@ import java.time.LocalDateTime
  * [repeat] : récurrence « unité + intervalle », ex. "D1" chaque jour, "W2" toutes les 2 semaines,
  * "M1" chaque mois, "Y1" chaque année ; null = pas de répétition.
  * [gid] : identifiant de la tâche correspondante dans Google Tasks.
+ * [alarm] : rappel de type réveil (sonne jusqu'à l'arrêt) au lieu d'une simple notification.
  */
 data class Task(
     val id: Long,
@@ -14,7 +15,8 @@ data class Task(
     val done: Boolean = false,
     val num: Int = 0,
     val repeat: String? = null,
-    val gid: String? = null
+    val gid: String? = null,
+    val alarm: Boolean = false
 )
 
 object Repeat {

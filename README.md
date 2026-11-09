@@ -14,6 +14,9 @@ Un nombre n'est lu comme une heure qu'avec « à / vers / pour / avant » ou « 
 L'app prévient à voix haute si aucune date n'est comprise ou si l'échéance est passée.
 Sans heure : 9h. Notification à l'échéance.
 
+Réveil (ça sonne jusqu'à ce qu'on touche la notification, même en silencieux) : « réveille-moi demain à 7h »,
+« alarme dans 20 minutes pour sortir le gâteau », « mets un réveil à 14h ». Marqué ⏰ dans la liste.
+
 Commandes : « lis mes tâches » (lecture vocale), « supprime appeler Paul », « ferme l'application », « pause » (toucher le micro pour reprendre).
 
 Build : `./gradlew assembleDebug` — tests : `./gradlew testDebugUnitTest`.
