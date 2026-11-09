@@ -465,6 +465,7 @@ class MainActivity : AppCompatActivity() {
                 repeatChoices.map { it?.let(Repeat::label) ?: "Ne se répète pas" })
             setSelection(repeatChoices.indexOf(task.repeat))
         }
+        val alarmBox = v.findViewById<CheckBox>(R.id.editAlarm).apply { isChecked = task.alarm }
         var date: LocalDate? = task.due?.toLocalDate()
         var time: LocalTime = task.due?.toLocalTime() ?: LocalTime.of(9, 0)
         fun show() {
@@ -493,7 +494,8 @@ class MainActivity : AppCompatActivity() {
                     it.copy(
                         title = title.text.toString().trim().ifEmpty { task.title },
                         due = date?.atTime(time),
-                        repeat = if (date == null) null else repeatChoices[repeatSpinner.selectedItemPosition]
+                        repeat = if (date == null) null else repeatChoices[repeatSpinner.selectedItemPosition],
+                        alarm = alarmBox.isChecked
                     )
                 }
                 val updated = store.get(task.id) ?: return@setPositiveButton

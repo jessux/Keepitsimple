@@ -47,6 +47,13 @@
         android:layout_marginTop="8dp"
         android:minHeight="48dp" />
 
+    <CheckBox
+        android:id="@+id/editAlarm"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="⏰ Réveil (sonne jusqu'à l'arrêt)" />
+
     <com.google.android.material.button.MaterialButton
         android:id="@+id/editNoDate"
         style="@style/Widget.Material3.Button.TextButton"
