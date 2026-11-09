@@ -78,7 +78,9 @@ object VoiceParser {
     fun parse(input: String, now: LocalDateTime = LocalDateTime.now()): Task {
         if (!alarmWords.containsMatchIn(input)) return parseTask(input, now)
         val task = parseTask(alarmWords.replace(input, " "), now)
-        return task.copy(title = if (task.title == "Tâche") "Réveil" else task.title, alarm = true)
+        // « alarme dans 20 min pour sortir le gâteau » : le « pour » reste après l'échéance retirée
+        val title = task.title.replace(Regex("^pour\\s+", RegexOption.IGNORE_CASE), "").replaceFirstChar { it.uppercase() }
+        return task.copy(title = if (title == "Tâche" || title.isEmpty()) "Réveil" else title, alarm = true)
     }
 
     private fun parseTask(input: String, now: LocalDateTime): Task {
