@@ -1,6 +1,7 @@
 package com.keepitsimple
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -11,6 +12,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import org.json.JSONArray
 import java.time.LocalDateTime
 import java.util.concurrent.Callable
@@ -70,12 +73,13 @@ data class TaskRow(
     val done: Boolean,
     val num: Int,
     val repeat: String?,
-    val gid: String?
+    val gid: String?,
+    @ColumnInfo(defaultValue = "0") val alarm: Boolean = false
 ) {
-    fun task() = Task(id, title, due?.let(LocalDateTime::parse), done, num, repeat, gid)
+    fun task() = Task(id, title, due?.let(LocalDateTime::parse), done, num, repeat, gid, alarm)
 
     companion object {
-        fun of(t: Task) = TaskRow(t.id, t.title, t.due?.toString(), t.done, t.num, t.repeat, t.gid)
+        fun of(t: Task) = TaskRow(t.id, t.title, t.due?.toString(), t.done, t.num, t.repeat, t.gid, t.alarm)
     }
 }
 
@@ -113,7 +117,7 @@ interface OutboxDao {
     fun failed(kind: String, ref: String, error: String?)
 }
 
-@Database(entities = [TaskRow::class, OutboxRow::class], version = 1, exportSchema = false)
+@Database(entities = [TaskRow::class, OutboxRow::class], version = 2, exportSchema = false)
 abstract class KisDb : RoomDatabase() {
     abstract fun tasks(): TaskDao
     abstract fun outbox(): OutboxDao
@@ -125,6 +129,11 @@ abstract class KisDb : RoomDatabase() {
             instance ?: Room.databaseBuilder(c.applicationContext, KisDb::class.java, "kis.db")
                 // Requêtes courtes sur quelques dizaines de lignes : appelées directement depuis l'interface
                 .allowMainThreadQueries()
+                .addMigrations(object : Migration(1, 2) {
+                    override fun migrate(db: SupportSQLiteDatabase) {
+                        db.execSQL("ALTER TABLE tasks ADD COLUMN alarm INTEGER NOT NULL DEFAULT 0")
+                    }
+                })
                 .build().also { importLegacy(c, it); instance = it }
         }
 

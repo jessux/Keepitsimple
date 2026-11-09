@@ -72,7 +72,16 @@ object VoiceParser {
     )
     private val monthDay = Regex("\\ble\\s+(\\d{1,2}|1er)\\b(?!\\s*/)(?!\\s+(?:${months.joinToString("|")}))", RegexOption.IGNORE_CASE)
 
+    // Rappel de type réveil : « réveille-moi demain à 7h », « alarme à 14h pour sortir le gâteau »
+    private val alarmWords = Regex("\\b(?:réveille[- ]moi|mets (?:un |une )?(?:réveil|alarme)|alarme|réveil)\\b\\s*(?:pour\\s+)?", RegexOption.IGNORE_CASE)
+
     fun parse(input: String, now: LocalDateTime = LocalDateTime.now()): Task {
+        if (!alarmWords.containsMatchIn(input)) return parseTask(input, now)
+        val task = parseTask(alarmWords.replace(input, " "), now)
+        return task.copy(title = if (task.title == "Tâche") "Réveil" else task.title, alarm = true)
+    }
+
+    private fun parseTask(input: String, now: LocalDateTime): Task {
         var text = input.trim()
         var date: LocalDate? = null
         var hour: LocalTime? = null

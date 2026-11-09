@@ -465,6 +465,7 @@ class MainActivity : AppCompatActivity() {
                 repeatChoices.map { it?.let(Repeat::label) ?: "Ne se répète pas" })
             setSelection(repeatChoices.indexOf(task.repeat))
         }
+        val alarmBox = v.findViewById<CheckBox>(R.id.editAlarm).apply { isChecked = task.alarm }
         var date: LocalDate? = task.due?.toLocalDate()
         var time: LocalTime = task.due?.toLocalTime() ?: LocalTime.of(9, 0)
         fun show() {
@@ -493,7 +494,8 @@ class MainActivity : AppCompatActivity() {
                     it.copy(
                         title = title.text.toString().trim().ifEmpty { task.title },
                         due = date?.atTime(time),
-                        repeat = if (date == null) null else repeatChoices[repeatSpinner.selectedItemPosition]
+                        repeat = if (date == null) null else repeatChoices[repeatSpinner.selectedItemPosition],
+                        alarm = alarmBox.isChecked
                     )
                 }
                 val updated = store.get(task.id) ?: return@setPositiveButton
@@ -542,7 +544,7 @@ class MainActivity : AppCompatActivity() {
             val color = ContextCompat.getColor(this@MainActivity, colorRes)
             h.num.text = task.num.toString()
             h.num.visibility = if (task.done) View.GONE else View.VISIBLE
-            h.title.text = task.title
+            h.title.text = if (task.alarm) "⏰ " + task.title else task.title
             h.title.alpha = if (task.done) 0.5f else 1f
             h.title.paintFlags = if (task.done) h.title.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 else h.title.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()

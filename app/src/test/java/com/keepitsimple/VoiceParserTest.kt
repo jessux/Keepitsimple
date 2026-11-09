@@ -1,6 +1,8 @@
 package com.keepitsimple
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 
@@ -69,4 +71,14 @@ class VoiceParserTest {
         assertEquals(false, Updater.isNewer("0.6", "0.6"))
         assertEquals(false, Updater.isNewer("0.5", "0.6"))
     }
+
+    @Test fun reveil() {
+        val t = VoiceParser.parse("réveille-moi demain à 7h", now)
+        assertEquals("Réveil", t.title); assertEquals(LocalDateTime.of(2026, 10, 29, 7, 0), t.due); assertTrue(t.alarm)
+    }
+    @Test fun alarmeAvecTitre() {
+        val t = VoiceParser.parse("alarme dans 20 minutes pour sortir le gâteau", now)
+        assertEquals("Sortir le gâteau", t.title); assertTrue(t.alarm)
+    }
+    @Test fun rappelSimpleSansAlarme() = assertFalse(VoiceParser.parse("appeler Paul demain à 18h", now).alarm)
 }
