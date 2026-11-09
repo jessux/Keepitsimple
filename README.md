@@ -65,7 +65,7 @@ une modification locale en attente n'est pas écrasée par Google.
 
 ## Mise à jour automatique
 
-KIS vérifie toutes les heures la dernière release GitHub et s'installe tout seul quand l'application
-n'est pas à l'écran (ou quand on la quitte). « mets à jour l'application » force la vérification.
+À chaque lancement, KIS vérifie la dernière release GitHub et l'installe aussitôt (l'app se ferme
+pendant l'installation). En cours d'utilisation, vérification toutes les heures, installée quand on la quitte. « mets à jour l'application » force la vérification.
 Une seule fois : autoriser KIS à installer des applications inconnues (l'app ouvre le réglage).
 Android 12+ : silencieux à partir de la 2ᵉ mise à jour ; avant, une notification demande de confirmer.
