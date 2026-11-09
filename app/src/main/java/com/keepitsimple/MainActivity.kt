@@ -149,6 +149,8 @@ class MainActivity : AppCompatActivity() {
         Recap.scheduleDaily(this)
         PeriodicSync.schedule(this)
         refresh()
+        // À chaque lancement : vérification immédiate et installation directe de la nouvelle version
+        if (savedInstanceState == null) checkUpdate(force = true, install = true)
     }
 
     override fun onResume() {
@@ -184,11 +186,12 @@ class MainActivity : AppCompatActivity() {
         say("Récapitulatif envoyé chaque jour à " + t.format(DateTimeFormatter.ofPattern("H'h'mm")))
     }
 
-    private fun checkUpdate(force: Boolean, announce: Boolean = false) {
+    private fun checkUpdate(force: Boolean, announce: Boolean = false, install: Boolean = false) {
         Thread {
-            val (result, version) = try { Updater.check(this, force, install = false) } catch (e: Exception) { null to null }
+            val (result, version) = try { Updater.check(this, force, install) } catch (e: Exception) { null to null }
             runOnUiThread {
                 when (result) {
+                    Updater.Result.INSTALLING -> heard.text = "Installation de la version $version…"
                     Updater.Result.AVAILABLE -> {
                         updateReady = true
                         heard.text = "Version $version disponible : installée quand vous quitterez l'application"
