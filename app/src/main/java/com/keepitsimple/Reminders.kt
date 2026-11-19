@@ -85,11 +85,15 @@ class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getLongExtra("id", 0)
         val title = intent.getStringExtra("title") ?: ""
-        if (intent.getBooleanExtra("alarm", false)) {
+        if (!intent.getBooleanExtra("alarm", false)) return Reminders.notify(context, id, title)
+        try {
             context.startForegroundService(
                 Intent(context, AlarmService::class.java).putExtra("id", id).putExtra("title", title)
             )
-        } else Reminders.notify(context, id, title)
+        } catch (e: Exception) {
+            // Démarrage refusé (alarme inexacte, restrictions constructeur) : notification sonore en boucle
+            Reminders.notify(context, id, title, alarm = true)
+        }
     }
 }
 
@@ -97,49 +101,122 @@ class ReminderReceiver : BroadcastReceiver() {
 class AlarmService : android.app.Service() {
     private var player: android.media.MediaPlayer? = null
     private var vibrator: android.os.Vibrator? = null
+    private var stopAt: Runnable? = null
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun onBind(i: Intent?) = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "stop") { stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == STOP) { stopSelf(); return START_NOT_STICKY }
         val id = intent?.getLongExtra("id", 0) ?: 0
         val title = intent?.getStringExtra("title") ?: ""
-        val nm = getSystemService(android.app.NotificationManager::class.java)
+        val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel("alarm_ring", "Alarme en cours", android.app.NotificationManager.IMPORTANCE_HIGH).apply { setSound(null, null) }
+            NotificationChannel("alarm_ring", "Alarme en cours", NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null)  // le son vient du MediaPlayer
+                setBypassDnd(true)
+            }
         )
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val screen = PendingIntent.getActivity(
+            this, 2, Intent(this, AlarmActivity::class.java).putExtra("title", title)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val stop = PendingIntent.getService(
-            this, 1, Intent(this, AlarmService::class.java).setAction("stop"), PendingIntent.FLAG_IMMUTABLE
+            this, 1, Intent(this, AlarmService::class.java).setAction(STOP), PendingIntent.FLAG_IMMUTABLE
         )
         val n = android.app.Notification.Builder(this, "alarm_ring")
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("⏰ KIS").setContentText(title)
             .setCategory(android.app.Notification.CATEGORY_ALARM)
-            .setContentIntent(open).setFullScreenIntent(open, true)
+            .setVisibility(android.app.Notification.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setContentIntent(screen).setFullScreenIntent(screen, true)
             .addAction(android.app.Notification.Action.Builder(null, "Arrêter", stop).build())
             .build()
-        startForeground(id.toInt(), n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        if (player == null) {
-            player = android.media.MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-                )
-                setDataSource(this@AlarmService, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
-                isLooping = true
-                prepare(); start()
-            }
-            vibrator = getSystemService(android.os.Vibrator::class.java).also {
-                it.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 600, 400), 0))
-            }
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+            startForeground(NOTIF_ID, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        else startForeground(NOTIF_ID, n)
+        if (player == null) ring()
+        // Sécurité : s'arrête seul après 10 min
+        stopAt?.let(handler::removeCallbacks)
+        stopAt = Runnable { stopSelf() }.also { handler.postDelayed(it, 10 * 60_000L) }
         return START_NOT_STICKY
     }
 
+    private fun ring() {
+        val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        // Certains téléphones n'ont pas de son d'alarme par défaut
+        val uri = listOf(RingtoneManager.TYPE_ALARM, RingtoneManager.TYPE_RINGTONE, RingtoneManager.TYPE_NOTIFICATION)
+            .firstNotNullOfOrNull { RingtoneManager.getActualDefaultRingtoneUri(this, it) ?: RingtoneManager.getDefaultUri(it) }
+        player = try {
+            android.media.MediaPlayer().apply {
+                setAudioAttributes(attrs)
+                setWakeMode(this@AlarmService, android.os.PowerManager.PARTIAL_WAKE_LOCK)  // CPU éveillé pendant la sonnerie
+                setDataSource(this@AlarmService, uri!!)
+                isLooping = true
+                prepare(); start()
+            }
+        } catch (e: Exception) { null }
+        vibrator = getSystemService(android.os.Vibrator::class.java).also {
+            it.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 600, 400), 0), attrs)
+        }
+    }
+
     override fun onDestroy() {
+        stopAt?.let(handler::removeCallbacks)
         player?.release(); player = null
         vibrator?.cancel()
+        sendBroadcast(Intent(STOP).setPackage(packageName))  // ferme l'écran d'alarme
+        super.onDestroy()
+    }
+
+    companion object {
+        const val STOP = "com.keepitsimple.ALARM_STOP"
+        private const val NOTIF_ID = 424242
+    }
+}
+
+/** Écran plein écran, par-dessus l'écran verrouillé, avec un gros bouton « Arrêter ». */
+class AlarmActivity : android.app.Activity() {
+    private val closer = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) = finish()
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        @Suppress("DEPRECATION")  // showWhenLocked/turnScreenOn du manifeste n'existent qu'à partir d'Android 8.1
+        window.addFlags(
+            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
+        val pad = (24 * resources.displayMetrics.density).toInt()
+        setContentView(android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(pad, pad, pad, pad)
+            addView(android.widget.TextView(this@AlarmActivity).apply {
+                text = "⏰\n" + (intent.getStringExtra("title") ?: "")
+                textSize = 32f
+                gravity = android.view.Gravity.CENTER
+                setPadding(0, 0, 0, pad * 2)
+            })
+            addView(android.widget.Button(this@AlarmActivity).apply {
+                text = "Arrêter"
+                textSize = 24f
+                setOnClickListener {
+                    startService(Intent(this@AlarmActivity, AlarmService::class.java).setAction(AlarmService.STOP))
+                    finish()
+                }
+            })
+        })
+        registerReceiver(closer, android.content.IntentFilter(AlarmService.STOP), RECEIVER_NOT_EXPORTED)
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(closer)
         super.onDestroy()
     }
 }
