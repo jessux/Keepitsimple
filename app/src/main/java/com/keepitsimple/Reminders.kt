@@ -24,7 +24,7 @@ object Reminders {
         val am = context.getSystemService(AlarmManager::class.java)
         val pi = pending(context, task)
         val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
-        if (task.alarm && exact) {
+        if (task.alarm) {  // setAlarmClock n'exige pas la permission « alarmes exactes »
             am.setAlarmClock(AlarmManager.AlarmClockInfo(at, null), pi)
         } else if (exact) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
