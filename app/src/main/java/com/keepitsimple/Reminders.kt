@@ -81,7 +81,64 @@ object Reminders {
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        Reminders.notify(context, intent.getLongExtra("id", 0), intent.getStringExtra("title") ?: "", intent.getBooleanExtra("alarm", false))
+        val id = intent.getLongExtra("id", 0)
+        val title = intent.getStringExtra("title") ?: ""
+        if (intent.getBooleanExtra("alarm", false)) {
+            context.startForegroundService(
+                Intent(context, AlarmService::class.java).putExtra("id", id).putExtra("title", title)
+            )
+        } else Reminders.notify(context, id, title)
+    }
+}
+
+/** Sonnerie en boucle sur le flux « alarme » (sonne en silencieux / Ne pas déranger) jusqu'à « Arrêter ». */
+class AlarmService : android.app.Service() {
+    private var player: android.media.MediaPlayer? = null
+    private var vibrator: android.os.Vibrator? = null
+
+    override fun onBind(i: Intent?) = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "stop") { stopSelf(); return START_NOT_STICKY }
+        val id = intent?.getLongExtra("id", 0) ?: 0
+        val title = intent?.getStringExtra("title") ?: ""
+        val nm = getSystemService(android.app.NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel("alarm_ring", "Alarme en cours", android.app.NotificationManager.IMPORTANCE_HIGH).apply { setSound(null, null) }
+        )
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val stop = PendingIntent.getService(
+            this, 1, Intent(this, AlarmService::class.java).setAction("stop"), PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = android.app.Notification.Builder(this, "alarm_ring")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setContentTitle("⏰ KIS").setContentText(title)
+            .setCategory(android.app.Notification.CATEGORY_ALARM)
+            .setContentIntent(open).setFullScreenIntent(open, true)
+            .addAction(android.app.Notification.Action.Builder(null, "Arrêter", stop).build())
+            .build()
+        startForeground(id.toInt(), n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        if (player == null) {
+            player = android.media.MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+                )
+                setDataSource(this@AlarmService, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+                isLooping = true
+                prepare(); start()
+            }
+            vibrator = getSystemService(android.os.Vibrator::class.java).also {
+                it.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 600, 400), 0))
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        player?.release(); player = null
+        vibrator?.cancel()
+        super.onDestroy()
     }
 }
 
